@@ -41,4 +41,22 @@ public class SessionFlowTests
         Assert.True(aggregates.GetProperty("AvgFps").GetDouble() > 0);
         Assert.True(aggregates.GetProperty("AvgFrameTimeMs").GetDouble() > 0);
     }
+
+    [Fact]
+    public void StopSession_WithNoSamples_WritesZeroedSummary()
+    {
+        var baseDir = Path.Combine(Path.GetTempPath(), "ZykeMarkTests", Guid.NewGuid().ToString("N"));
+        var store = new FileSystemLocalStore(baseDir);
+        var sessionManager = new SessionManager(store, new ZykeMarkAggregator());
+        var metadata = sessionManager.StartSession("EmptyGame", "1.0.0", new RunConfig());
+
+        var summaryPath = sessionManager.StopSession(metadata.SessionId);
+
+        Assert.True(File.Exists(summaryPath));
+        using var summaryStream = File.OpenRead(summaryPath);
+        using var document = JsonDocument.Parse(summaryStream);
+        var aggregates = document.RootElement.GetProperty("aggregates");
+        Assert.Equal(0, aggregates.GetProperty("FrameCount").GetInt32());
+        Assert.Equal(0, aggregates.GetProperty("AvgFps").GetDouble());
+    }
 }

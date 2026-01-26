@@ -39,6 +39,10 @@ switch (command)
         }
 
         var summaryPath = sessionManager.StopSession(latestSessionId);
+        if (SummaryHasNoSamples(summaryPath))
+        {
+            Console.WriteLine("No samples collected for this session.");
+        }
         Console.WriteLine($"Summary: {summaryPath}");
         return;
     }
@@ -94,6 +98,10 @@ switch (command)
 
         collector.Collect(TimeSpan.FromSeconds(durationSeconds));
         var summaryPath = sessionManager.StopSession(metadata.SessionId);
+        if (SummaryHasNoSamples(summaryPath))
+        {
+            Console.WriteLine("No samples collected for this session.");
+        }
 
         Console.WriteLine($"SessionFolder: {Path.Combine(GetRootPath(), metadata.SessionId)}");
         Console.WriteLine($"Summary: {summaryPath}");
@@ -132,6 +140,21 @@ static string GetRootPath() => Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
     "ZykeMark",
     "sessions");
+
+static bool SummaryHasNoSamples(string summaryPath)
+{
+    try
+    {
+        using var stream = File.OpenRead(summaryPath);
+        using var document = JsonDocument.Parse(stream);
+        var aggregates = document.RootElement.GetProperty("aggregates");
+        return aggregates.GetProperty("FrameCount").GetInt32() == 0;
+    }
+    catch (Exception)
+    {
+        return false;
+    }
+}
 
 static string? TryGetLatestSessionId()
 {

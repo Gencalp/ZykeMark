@@ -60,7 +60,18 @@ public sealed class SessionManager : ISessionManager
 
         var chunks = _localStore.ReadChunks(resolvedSessionId);
         var samples = chunks.SelectMany(chunk => chunk.Samples).ToArray();
-        var aggregates = _aggregator.Aggregate(samples);
+        var aggregates = samples.Length == 0
+            ? new SessionAggregates(
+                FrameCount: 0,
+                DurationMs: 0,
+                AvgFps: 0,
+                AvgFrameTimeMs: 0,
+                P99FrameTimeMs: 0,
+                OnePercentLowFps: 0,
+                PointOnePercentLowFps: 0,
+                AvgCpuFrameTimeMs: null,
+                AvgGpuFrameTimeMs: null)
+            : _aggregator.Aggregate(samples);
 
         var summaryPayload = new
         {
