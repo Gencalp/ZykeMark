@@ -28,8 +28,10 @@ public class ZykeMarkAggregatorTests
         Assert.Equal(50.0, result.P99FrameTimeMs, 5);
         Assert.Equal(20.0, result.OnePercentLowFps, 5);
         Assert.Equal(20.0, result.PointOnePercentLowFps, 5);
-        Assert.Equal((8 + 9 + 10 + 11) / 4.0, result.AvgCpuFrameTimeMs, 5);
-        Assert.Equal((9 + 11 + 12 + 13) / 4.0, result.AvgGpuFrameTimeMs, 5);
+        Assert.NotNull(result.AvgCpuFrameTimeMs);
+        Assert.NotNull(result.AvgGpuFrameTimeMs);
+        Assert.Equal((8 + 9 + 10 + 11) / 4.0, result.AvgCpuFrameTimeMs!.Value, 5);
+        Assert.Equal((9 + 11 + 12 + 13) / 4.0, result.AvgGpuFrameTimeMs!.Value, 5);
     }
 
     [Fact]
