@@ -19,8 +19,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\Fixtures\presentmon_sample.csv">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
+    <Content Include="..\fixtures\presentmon_sample.csv">
+      <Link>Fixtures\presentmon_sample.csv</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 </Project>
