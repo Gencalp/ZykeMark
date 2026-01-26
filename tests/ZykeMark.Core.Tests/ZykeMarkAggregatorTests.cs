@@ -22,12 +22,12 @@ public class ZykeMarkAggregatorTests
         var result = aggregator.Aggregate(samples);
 
         Assert.Equal(5, result.FrameCount);
-        Assert.Equal(40, result.DurationMs, 5);
-        Assert.Equal(30, result.AvgFrameTimeMs, 5);
+        Assert.Equal(40.0, result.DurationMs, 5);
+        Assert.Equal(30.0, result.AvgFrameTimeMs, 5);
         Assert.Equal(1000.0 / 30.0, result.AvgFps, 5);
-        Assert.Equal(50, result.P99FrameTimeMs, 5);
-        Assert.Equal(20, result.OnePercentLowFps, 5);
-        Assert.Equal(20, result.PointOnePercentLowFps, 5);
+        Assert.Equal(50.0, result.P99FrameTimeMs, 5);
+        Assert.Equal(20.0, result.OnePercentLowFps, 5);
+        Assert.Equal(20.0, result.PointOnePercentLowFps, 5);
         Assert.Equal((8 + 9 + 10 + 11) / 4.0, result.AvgCpuFrameTimeMs, 5);
         Assert.Equal((9 + 11 + 12 + 13) / 4.0, result.AvgGpuFrameTimeMs, 5);
     }
@@ -47,10 +47,10 @@ public class ZykeMarkAggregatorTests
         var result = aggregator.Aggregate(samples);
 
         Assert.Equal(4, result.FrameCount);
-        Assert.Equal(48, result.DurationMs, 5);
-        Assert.Equal(16, result.AvgFrameTimeMs, 5);
+        Assert.Equal(48.0, result.DurationMs, 5);
+        Assert.Equal(16.0, result.AvgFrameTimeMs, 5);
         Assert.Equal(62.5, result.AvgFps, 5);
-        Assert.Equal(16, result.P99FrameTimeMs, 5);
+        Assert.Equal(16.0, result.P99FrameTimeMs, 5);
         Assert.Equal(62.5, result.OnePercentLowFps, 5);
         Assert.Equal(62.5, result.PointOnePercentLowFps, 5);
         Assert.Null(result.AvgCpuFrameTimeMs);
@@ -72,12 +72,12 @@ public class ZykeMarkAggregatorTests
         var result = aggregator.Aggregate(samples);
 
         Assert.Equal(4, result.FrameCount);
-        Assert.Equal(15, result.DurationMs, 5);
+        Assert.Equal(15.0, result.DurationMs, 5);
         Assert.Equal(12.5, result.AvgFrameTimeMs, 5);
-        Assert.Equal(80, result.AvgFps, 5);
-        Assert.Equal(20, result.P99FrameTimeMs, 5);
-        Assert.Equal(50, result.OnePercentLowFps, 5);
-        Assert.Equal(50, result.PointOnePercentLowFps, 5);
+        Assert.Equal(80.0, result.AvgFps, 5);
+        Assert.Equal(20.0, result.P99FrameTimeMs, 5);
+        Assert.Equal(50.0, result.OnePercentLowFps, 5);
+        Assert.Equal(50.0, result.PointOnePercentLowFps, 5);
     }
 
     [Fact]
