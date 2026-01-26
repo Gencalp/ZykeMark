@@ -2,6 +2,8 @@ using System.Text.Json;
 using ZykeMark.App.Cli.Collectors;
 using ZykeMark.Core.Models;
 using ZykeMark.Core.Services;
+using ZykeMark.Infrastructure.Collectors;
+using ZykeMark.Infrastructure.PresentMon;
 
 if (args.Length == 0)
 {
@@ -107,6 +109,77 @@ switch (command)
         Console.WriteLine($"Summary: {summaryPath}");
         return;
     }
+    case "real-run":
+    {
+        var secondsValue = GetOptionValue(args, "--seconds");
+        var gameName = GetOptionValue(args, "--game");
+        var buildVersion = GetOptionValue(args, "--build");
+        var processName = GetOptionValue(args, "--process_name");
+        var processIdValue = GetOptionValue(args, "--process_id");
+        var presentMonPath = GetOptionValue(args, "--presentmon-path");
+
+        var durationSeconds = 15.0;
+        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, out durationSeconds))
+        {
+            Console.WriteLine("Invalid value for --seconds.");
+            return;
+        }
+
+        int? processId = null;
+        if (!string.IsNullOrWhiteSpace(processIdValue))
+        {
+            if (!int.TryParse(processIdValue, out var parsedProcessId))
+            {
+                Console.WriteLine("Invalid value for --process_id.");
+                return;
+            }
+
+            processId = parsedProcessId;
+        }
+
+        if (string.IsNullOrWhiteSpace(processName) && processId is null)
+        {
+            Console.WriteLine("--process_name or --process_id is required.");
+            return;
+        }
+
+        var store = new FileSystemLocalStore();
+        var sessionManager = new SessionManager(store, new ZykeMarkAggregator());
+        var metadata = sessionManager.StartSession(gameName, buildVersion, new RunConfig());
+
+        var runOptions = new PresentMonRunOptions(presentMonPath, processName, processId, (int)Math.Ceiling(durationSeconds));
+        var collector = new PresentMonCollector(
+            store,
+            metadata.SessionId,
+            metadata.StartedAtUtc,
+            new PresentMonRunner(),
+            new PresentMonCsvParser(),
+            runOptions);
+
+        try
+        {
+            collector.Collect(TimeSpan.FromSeconds(durationSeconds));
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.WriteLine(ex.Message);
+            if (ex.InnerException is System.ComponentModel.Win32Exception)
+            {
+                Console.WriteLine("PresentMon may require administrator privileges.");
+            }
+            return;
+        }
+
+        var summaryPath = sessionManager.StopSession(metadata.SessionId);
+        if (SummaryHasNoSamples(summaryPath))
+        {
+            Console.WriteLine("No samples collected for this session.");
+        }
+
+        Console.WriteLine($"SessionFolder: {Path.Combine(GetRootPath(), metadata.SessionId)}");
+        Console.WriteLine($"Summary: {summaryPath}");
+        return;
+    }
     default:
         Console.WriteLine("Unknown command.");
         PrintUsage();
@@ -121,6 +194,7 @@ static void PrintUsage()
     Console.WriteLine("  zykemark end");
     Console.WriteLine("  zykemark status");
     Console.WriteLine("  zykemark demo-run --seconds 15 --seed 123");
+    Console.WriteLine("  zykemark real-run --process_name \"MyGame.exe\" --seconds 15 --presentmon-path \"C:\\\\tools\\\\PresentMon.exe\"");
 }
 
 static string? GetOptionValue(string[] arguments, string name)

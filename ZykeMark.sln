@@ -6,6 +6,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ZykeMark.Core", "src\\ZykeM
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ZykeMark.App.Cli", "src\\ZykeMark.App.Cli\\ZykeMark.App.Cli.csproj", "{D51AE727-A70E-46E0-A3C7-FCE36F9A476A}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ZykeMark.Infrastructure", "src\\ZykeMark.Infrastructure\\ZykeMark.Infrastructure.csproj", "{3F4CDAA2-E6DC-4F66-939A-A9FD533F1F43}"
+EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ZykeMark.Core.Tests", "tests\\ZykeMark.Core.Tests\\ZykeMark.Core.Tests.csproj", "{146093DE-EF93-43D5-9B06-B8208EB4EE7D}"
 EndProject
 Global
@@ -22,6 +24,10 @@ Global
 		{D51AE727-A70E-46E0-A3C7-FCE36F9A476A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D51AE727-A70E-46E0-A3C7-FCE36F9A476A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D51AE727-A70E-46E0-A3C7-FCE36F9A476A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3F4CDAA2-E6DC-4F66-939A-A9FD533F1F43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3F4CDAA2-E6DC-4F66-939A-A9FD533F1F43}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3F4CDAA2-E6DC-4F66-939A-A9FD533F1F43}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3F4CDAA2-E6DC-4F66-939A-A9FD533F1F43}.Release|Any CPU.Build.0 = Release|Any CPU
 		{146093DE-EF93-43D5-9B06-B8208EB4EE7D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{146093DE-EF93-43D5-9B06-B8208EB4EE7D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{146093DE-EF93-43D5-9B06-B8208EB4EE7D}.Release|Any CPU.ActiveCfg = Release|Any CPU

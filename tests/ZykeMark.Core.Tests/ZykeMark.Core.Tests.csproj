@@ -15,5 +15,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ZykeMark.App.Cli\ZykeMark.App.Cli.csproj" />
     <ProjectReference Include="..\..\src\ZykeMark.Core\ZykeMark.Core.csproj" />
+    <ProjectReference Include="..\..\src\ZykeMark.Infrastructure\ZykeMark.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\Fixtures\presentmon_sample.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>
