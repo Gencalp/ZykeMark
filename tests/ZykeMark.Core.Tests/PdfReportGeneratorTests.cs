@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Globalization;
 using System.Linq;
 using UglyToad.PdfPig;
 using ZykeMark.Core.Models;
@@ -84,6 +85,44 @@ public class PdfReportGeneratorTests
         Assert.Contains("Details", ExtractPdfText(pdfPath));
     }
 
+    [Fact]
+    public void Generate_HandlesOffsetlessTimestamps_WithNonInvariantCulture()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("tr-TR");
+            var sessionFolder = CreateSessionFolder();
+            WriteSummaryWithTimestampStrings(
+                sessionFolder,
+                startedAtUtc: "2026-01-27T18:55:33.9822215",
+                endedAtUtc: "2026-01-27T18:56:33.9822215");
+
+            var pdfPath = GenerateReport(sessionFolder);
+
+            Assert.True(new FileInfo(pdfPath).Length > 1_000);
+            Assert.Contains("Duration", ExtractPdfText(pdfPath));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public void Generate_HandlesZTimestampFormat()
+    {
+        var sessionFolder = CreateSessionFolder();
+        WriteSummaryWithTimestampStrings(
+            sessionFolder,
+            startedAtUtc: "2026-01-27T18:55:33.9822215Z",
+            endedAtUtc: "2026-01-27T18:56:33.9822215Z");
+
+        var pdfPath = GenerateReport(sessionFolder);
+
+        Assert.True(new FileInfo(pdfPath).Length > 1_000);
+    }
+
     private static string GenerateReport(string sessionFolder)
     {
         var tokensPath = ReportGenerator.FindBrandTokensPath(AppContext.BaseDirectory);
@@ -125,6 +164,38 @@ public class PdfReportGeneratorTests
         {
             metadata,
             aggregates
+        };
+
+        var summaryPath = Path.Combine(sessionFolder, "summary.json");
+        File.WriteAllText(summaryPath, JsonSerializer.Serialize(payload));
+    }
+
+    private static void WriteSummaryWithTimestampStrings(string sessionFolder, string startedAtUtc, string endedAtUtc)
+    {
+        var payload = new
+        {
+            metadata = new
+            {
+                SessionId = Guid.NewGuid().ToString("N"),
+                StartedAtUtc = startedAtUtc,
+                EndedAtUtc = endedAtUtc,
+                DurationMs = (long?)null,
+                GameName = "SampleGame",
+                BuildVersion = "1.0.0",
+                RunConfig = new { Api = "DX12", Resolution = "1920x1080", Preset = "High" }
+            },
+            aggregates = new
+            {
+                FrameCount = 1200,
+                DurationMs = 0,
+                AvgFps = 60.0,
+                AvgFrameTimeMs = 16.67,
+                P99FrameTimeMs = 25.0,
+                OnePercentLowFps = 40.0,
+                PointOnePercentLowFps = 35.0,
+                AvgCpuFrameTimeMs = 12.5,
+                AvgGpuFrameTimeMs = 14.2
+            }
         };
 
         var summaryPath = Path.Combine(sessionFolder, "summary.json");

@@ -98,10 +98,12 @@ public sealed class ReportGenerator
         var aggregates = root.GetProperty("aggregates");
 
         var sessionId = metadata.GetProperty("SessionId").GetString() ?? "Unknown";
-        var startedAtUtc = metadata.GetProperty("StartedAtUtc").GetDateTime();
-        var endedAtUtc = metadata.GetProperty("EndedAtUtc").ValueKind == JsonValueKind.Null
-            ? (DateTime?)null
-            : metadata.GetProperty("EndedAtUtc").GetDateTime();
+        var startedAtUtc = TryReadUtcTimestamp(metadata, "StartedAtUtc", out var startedTimestamp)
+            ? startedTimestamp
+            : (DateTime?)null;
+        var endedAtUtc = TryReadUtcTimestamp(metadata, "EndedAtUtc", out var endedTimestamp)
+            ? endedTimestamp
+            : (DateTime?)null;
 
         var durationMs = metadata.GetProperty("DurationMs").ValueKind == JsonValueKind.Null
             ? (long?)null
@@ -247,8 +249,8 @@ public sealed class ReportGenerator
             {
                 column.Item().Text("ZykeMark Performance Report").FontSize(18).SemiBold();
                 column.Item().Text($"Session: {data.SessionId}").FontSize(10);
-                column.Item().Text($"Started: {data.StartedAtUtc:O}").FontSize(10);
-                column.Item().Text($"Ended: {(data.EndedAtUtc.HasValue ? data.EndedAtUtc.Value.ToString("O") : "Not ended")}").FontSize(10);
+                column.Item().Text($"Started: {FormatTimestamp(data.StartedAtUtc) ?? "Not provided"}").FontSize(10);
+                column.Item().Text($"Ended: {FormatTimestamp(data.EndedAtUtc) ?? "Not ended"}").FontSize(10);
             });
 
             row.ConstantItem(200).Column(column =>
@@ -752,7 +754,7 @@ public sealed class ReportGenerator
 
     private sealed record ReportData(
         string SessionId,
-        DateTime StartedAtUtc,
+        DateTime? StartedAtUtc,
         DateTime? EndedAtUtc,
         long? DurationMs,
         long EffectiveDurationMs,
@@ -804,7 +806,7 @@ public sealed class ReportGenerator
 
     private sealed record Verdict(string Bound, string Stability, string Confidence, bool IncludeDetailsPage);
 
-    private static long ResolveEffectiveDurationMs(long aggregatesDurationMs, long? metadataDurationMs, DateTime startedAtUtc, DateTime? endedAtUtc)
+    private static long ResolveEffectiveDurationMs(long aggregatesDurationMs, long? metadataDurationMs, DateTime? startedAtUtc, DateTime? endedAtUtc)
     {
         if (aggregatesDurationMs > 0)
         {
@@ -816,11 +818,56 @@ public sealed class ReportGenerator
             return metadataDurationMs.Value;
         }
 
-        if (endedAtUtc.HasValue && endedAtUtc.Value > startedAtUtc)
+        if (startedAtUtc.HasValue && endedAtUtc.HasValue && endedAtUtc.Value > startedAtUtc.Value)
         {
             return (long)(endedAtUtc.Value - startedAtUtc).TotalMilliseconds;
         }
 
         return 0;
+    }
+
+    private static bool TryReadUtcTimestamp(JsonElement metadata, string propertyName, out DateTime value)
+    {
+        value = default;
+        if (!metadata.TryGetProperty(propertyName, out var prop) || prop.ValueKind == JsonValueKind.Null)
+        {
+            return false;
+        }
+
+        if (prop.ValueKind == JsonValueKind.String)
+        {
+            var raw = prop.GetString();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return false;
+            }
+
+            if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var offset))
+            {
+                value = offset.UtcDateTime;
+                return true;
+            }
+
+            if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed))
+            {
+                value = parsed;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt64(out var ticks))
+        {
+            value = new DateTime(ticks, DateTimeKind.Utc);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string? FormatTimestamp(DateTime? timestamp)
+    {
+        return timestamp.HasValue ? timestamp.Value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture) : null;
     }
 }
