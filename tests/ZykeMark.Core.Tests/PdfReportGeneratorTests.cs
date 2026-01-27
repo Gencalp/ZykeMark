@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ZykeMark.Core.Models;
 using ZykeMark.Infrastructure.Reporting;
 using Xunit;
@@ -43,6 +45,29 @@ public class PdfReportGeneratorTests
         Assert.True(File.Exists(pdfPath));
     }
 
+    [Fact]
+    public void Generate_UsesSinglePage_ForTypicalSession()
+    {
+        var sessionFolder = CreateSessionFolder();
+        WriteSummary(sessionFolder, includeCpuGpu: true, frameCount: 1800);
+        WriteChunk(sessionFolder);
+
+        var pdfPath = GenerateReport(sessionFolder);
+
+        Assert.Equal(1, CountPdfPages(pdfPath));
+    }
+
+    [Fact]
+    public void Generate_UsesSinglePage_WhenChecklistPresent()
+    {
+        var sessionFolder = CreateSessionFolder();
+        WriteSummary(sessionFolder, includeCpuGpu: false, frameCount: 240, runConfig: new RunConfig());
+
+        var pdfPath = GenerateReport(sessionFolder);
+
+        Assert.Equal(1, CountPdfPages(pdfPath));
+    }
+
     private static string GenerateReport(string sessionFolder)
     {
         var tokensPath = ReportGenerator.FindBrandTokensPath(AppContext.BaseDirectory);
@@ -58,7 +83,7 @@ public class PdfReportGeneratorTests
         return sessionFolder;
     }
 
-    private static void WriteSummary(string sessionFolder, bool includeCpuGpu, int frameCount)
+    private static void WriteSummary(string sessionFolder, bool includeCpuGpu, int frameCount, RunConfig? runConfig = null)
     {
         var metadata = new SessionMetadata(
             SessionId: Guid.NewGuid().ToString("N"),
@@ -67,7 +92,7 @@ public class PdfReportGeneratorTests
             DurationMs: 60_000,
             GameName: "SampleGame",
             BuildVersion: "1.0.0",
-            RunConfig: new RunConfig("DX12", "1920x1080", "High"));
+            RunConfig: runConfig ?? new RunConfig("DX12", "1920x1080", "High"));
 
         var aggregates = new SessionAggregates(
             FrameCount: frameCount,
@@ -88,6 +113,14 @@ public class PdfReportGeneratorTests
 
         var summaryPath = Path.Combine(sessionFolder, "summary.json");
         File.WriteAllText(summaryPath, JsonSerializer.Serialize(payload));
+    }
+
+    private static int CountPdfPages(string pdfPath)
+    {
+        var content = Encoding.ASCII.GetString(File.ReadAllBytes(pdfPath));
+        var pageMatches = Regex.Matches(content, "/Type\\s*/Page\\b", RegexOptions.CultureInvariant);
+        var pagesRootMatches = Regex.Matches(content, "/Type\\s*/Pages\\b", RegexOptions.CultureInvariant);
+        return Math.Max(0, pageMatches.Count - pagesRootMatches.Count);
     }
 
     private static void WriteChunk(string sessionFolder)
