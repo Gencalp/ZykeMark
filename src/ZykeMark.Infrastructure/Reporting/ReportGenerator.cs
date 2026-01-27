@@ -818,10 +818,11 @@ public sealed class ReportGenerator
             return metadataDurationMs.Value;
         }
 
-        if (startedAtUtc.HasValue && endedAtUtc.HasValue && endedAtUtc.Value > startedAtUtc.Value)
-        {
-            return (long)(endedAtUtc.Value - startedAtUtc).TotalMilliseconds;
-        }
+if (startedAtUtc.HasValue && endedAtUtc.HasValue && endedAtUtc.Value > startedAtUtc.Value)
+{
+    var delta = endedAtUtc.Value - startedAtUtc.Value;   // TimeSpan (nullable değil)
+    return (long)delta.TotalMilliseconds;
+}
 
         return 0;
     }
