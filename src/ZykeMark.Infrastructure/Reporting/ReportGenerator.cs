@@ -123,6 +123,10 @@ public sealed class ReportGenerator
             ? ParseRunConfig(runConfigProp)
             : new RunConfig();
 
+        var aggregatesDurationMs = aggregates.TryGetProperty("DurationMs", out var durationProp)
+            && durationProp.ValueKind != JsonValueKind.Null
+            ? durationProp.GetInt64()
+            : 0L;
         var avgFps = aggregates.GetProperty("AvgFps").GetDouble();
         var onePercentLow = aggregates.GetProperty("OnePercentLowFps").GetDouble();
         var pointOnePercentLow = aggregates.GetProperty("PointOnePercentLowFps").GetDouble();
@@ -144,11 +148,14 @@ public sealed class ReportGenerator
             ? ComputeChunkStats(chunksFolder)
             : ChunkStats.Empty;
 
+        var effectiveDurationMs = ResolveEffectiveDurationMs(aggregatesDurationMs, durationMs, startedAtUtc, endedAtUtc);
+
         return new ReportData(
             sessionId,
             startedAtUtc,
             endedAtUtc,
             durationMs,
+            effectiveDurationMs,
             gameName,
             buildVersion,
             captureTarget,
@@ -278,13 +285,13 @@ public sealed class ReportGenerator
             column.Spacing(SectionGap);
             column.Item().Element(section => BuildCaptureDetails(section, data));
             column.Item().Element(section => BuildVerdict(section, verdict));
+            column.Item().EnsureSpace(80).ShowEntire().Element(section => BuildNextSteps(section, data, nextRunItems));
             column.Item().Element(section => BuildRunConfig(section, data));
             column.Item().Element(section => BuildKeyMetrics(section, data));
             column.Item().Element(section => BuildCpuGpu(section, data));
             column.Item().Element(section => BuildStability(section, data));
             column.Item().ShowEntire().Element(section => BuildDataQuality(section, data, insights));
             column.Item().Element(section => BuildInterpretationNotes(section, insights));
-            column.Item().ShowEntire().Element(section => BuildNextSteps(section, data, nextRunItems));
             if (verdict.IncludeDetailsPage)
             {
                 column.Item().PageBreak();
@@ -299,11 +306,12 @@ public sealed class ReportGenerator
         {
             column.Spacing(ItemGap);
             column.Item().Text("Capture Details").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
-            column.Item().Text(
-                $"Target: {ValueOrNotProvided(data.CaptureTarget)} | " +
-                $"Mode: {ValueOrNotProvided(data.CaptureMode)} | " +
-                $"PresentMon: {ValueOrNotProvided(data.PresentMonVersion)} | " +
-                $"Samples: {data.FrameCount.ToString("N0", CultureInfo.InvariantCulture)}");
+            var details = new List<string>();
+            if (!string.IsNullOrWhiteSpace(data.CaptureTarget)) details.Add($"Target: {data.CaptureTarget}");
+            if (!string.IsNullOrWhiteSpace(data.CaptureMode)) details.Add($"Mode: {data.CaptureMode}");
+            if (!string.IsNullOrWhiteSpace(data.PresentMonVersion)) details.Add($"PresentMon: {data.PresentMonVersion}");
+            details.Add($"Samples: {data.FrameCount.ToString("N0", CultureInfo.InvariantCulture)}");
+            column.Item().Text(string.Join(" | ", details));
         });
     }
 
@@ -329,9 +337,24 @@ public sealed class ReportGenerator
         {
             column.Spacing(ItemGap);
             column.Item().Text("System & Run Config").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
-            column.Item().Text($"API: {ValueOrNotProvided(data.RunConfig.Api)}");
-            column.Item().Text($"Resolution: {ValueOrNotProvided(data.RunConfig.Resolution)}");
-            column.Item().Text($"Preset: {ValueOrNotProvided(data.RunConfig.Preset)}");
+            if (!string.IsNullOrWhiteSpace(data.RunConfig.Api))
+            {
+                column.Item().Text($"API: {data.RunConfig.Api}");
+            }
+            if (!string.IsNullOrWhiteSpace(data.RunConfig.Resolution))
+            {
+                column.Item().Text($"Resolution: {data.RunConfig.Resolution}");
+            }
+            if (!string.IsNullOrWhiteSpace(data.RunConfig.Preset))
+            {
+                column.Item().Text($"Preset: {data.RunConfig.Preset}");
+            }
+            if (string.IsNullOrWhiteSpace(data.RunConfig.Api)
+                && string.IsNullOrWhiteSpace(data.RunConfig.Resolution)
+                && string.IsNullOrWhiteSpace(data.RunConfig.Preset))
+            {
+                column.Item().Text("No run config provided.");
+            }
 
             var warnings = new List<string>();
             if (string.IsNullOrWhiteSpace(data.GameName)) warnings.Add("GameName");
@@ -345,7 +368,7 @@ public sealed class ReportGenerator
                 column.Item().PaddingTop(ItemGap).Row(row =>
                 {
                     row.ConstantItem(70).Element(badge => BuildSeverityBadge(badge, "Info", Severity.Info));
-                    row.RelativeItem().Text($"Comparability warnings: Missing {string.Join(", ", warnings)}.");
+                    row.RelativeItem().Text($"Missing: {string.Join(", ", warnings)}.");
                 });
             }
         });
@@ -375,7 +398,7 @@ public sealed class ReportGenerator
                 {
                     row.Spacing(ItemGap);
                     row.RelativeItem().Element(card => BuildMetricCard(card, "Avg Frame Time (ms)", data.AvgFrameTimeMs.ToString("F2", CultureInfo.InvariantCulture)));
-                    row.RelativeItem().Element(card => BuildMetricCard(card, "Duration", FormatDuration(data.DurationMs)));
+                    row.RelativeItem().Element(card => BuildMetricCard(card, "Duration", FormatDuration(data.EffectiveDurationMs)));
                 });
             });
         });
@@ -464,37 +487,49 @@ public sealed class ReportGenerator
         {
             column.Spacing(ItemGap);
             column.Item().Text("Next Steps").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
-            column.Item().Text("Fix in next run").FontSize(10).FontColor(_theme.Primary).SemiBold();
-            BuildBulletList(column, nextRunItems.Take(MaxChecklistItems));
-            column.Item().PaddingTop(ItemGap).Text("Performance actions").FontSize(10).FontColor(_theme.Primary).SemiBold();
-            var hint = GetBalanceHint(data.AvgCpuFrameTimeMs, data.AvgGpuFrameTimeMs);
+            column.Item().Row(row =>
+            {
+                row.Spacing(10);
+                row.RelativeItem().Column(left =>
+                {
+                    left.Spacing(ItemGap);
+                    left.Item().Text("Fix in next run").FontSize(10).FontColor(_theme.Primary).SemiBold();
+                    BuildBulletList(left, nextRunItems.Take(MaxChecklistItems));
+                });
+                row.RelativeItem().Column(right =>
+                {
+                    right.Spacing(ItemGap);
+                    right.Item().Text("Performance actions").FontSize(10).FontColor(_theme.Primary).SemiBold();
+                    var hint = GetBalanceHint(data.AvgCpuFrameTimeMs, data.AvgGpuFrameTimeMs);
 
-            if (hint == "Likely CPU-bound")
-            {
-                BuildBulletList(column, new[]
-                {
-                    "Profile main-thread hotspots and reduce simulation cost.",
-                    "Reduce draw calls/state changes and improve batching.",
-                    "Validate background tasks and thread contention."
+                    if (hint == "Likely CPU-bound")
+                    {
+                        BuildBulletList(right, new[]
+                        {
+                            "Profile main-thread hotspots and reduce simulation cost.",
+                            "Reduce draw calls/state changes and improve batching.",
+                            "Validate background tasks and thread contention."
+                        });
+                    }
+                    else if (hint == "Likely GPU-bound")
+                    {
+                        BuildBulletList(right, new[]
+                        {
+                            "Review shader complexity and post-processing passes.",
+                            "Evaluate resolution scaling or dynamic quality settings.",
+                            "Optimize texture/RT budget and overdraw."
+                        });
+                    }
+                    else
+                    {
+                        BuildBulletList(right, new[]
+                        {
+                            "Capture a longer run to reduce variance.",
+                            "Ensure fixed settings and consistent scene context."
+                        });
+                    }
                 });
-            }
-            else if (hint == "Likely GPU-bound")
-            {
-                BuildBulletList(column, new[]
-                {
-                    "Review shader complexity and post-processing passes.",
-                    "Evaluate resolution scaling or dynamic quality settings.",
-                    "Optimize texture/RT budget and overdraw."
-                });
-            }
-            else
-            {
-                BuildBulletList(column, new[]
-                {
-                    "Capture a longer run to reduce variance.",
-                    "Ensure fixed settings and consistent scene context."
-                });
-            }
+            });
         });
     }
 
@@ -535,14 +570,14 @@ public sealed class ReportGenerator
 
     private static string ValueOrNotProvided(string? value) => string.IsNullOrWhiteSpace(value) ? "Not provided" : value;
 
-    private static string FormatDuration(long? durationMs)
+    private static string FormatDuration(long durationMs)
     {
-        if (!durationMs.HasValue)
+        if (durationMs <= 0)
         {
             return "Not provided";
         }
 
-        var seconds = durationMs.Value / 1000.0;
+        var seconds = durationMs / 1000.0;
         return $"{seconds.ToString("F1", CultureInfo.InvariantCulture)} s";
     }
 
@@ -720,6 +755,7 @@ public sealed class ReportGenerator
         DateTime StartedAtUtc,
         DateTime? EndedAtUtc,
         long? DurationMs,
+        long EffectiveDurationMs,
         string? GameName,
         string? BuildVersion,
         string? CaptureTarget,
@@ -768,3 +804,22 @@ public sealed class ReportGenerator
 
     private sealed record Verdict(string Bound, string Stability, string Confidence, bool IncludeDetailsPage);
 }
+    private static long ResolveEffectiveDurationMs(long aggregatesDurationMs, long? metadataDurationMs, DateTime startedAtUtc, DateTime? endedAtUtc)
+    {
+        if (aggregatesDurationMs > 0)
+        {
+            return aggregatesDurationMs;
+        }
+
+        if (metadataDurationMs.HasValue && metadataDurationMs.Value > 0)
+        {
+            return metadataDurationMs.Value;
+        }
+
+        if (endedAtUtc.HasValue && endedAtUtc.Value > startedAtUtc)
+        {
+            return (long)(endedAtUtc.Value - startedAtUtc).TotalMilliseconds;
+        }
+
+        return 0;
+    }
