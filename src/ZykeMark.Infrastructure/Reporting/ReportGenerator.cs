@@ -493,10 +493,10 @@ public sealed class ReportGenerator
             return;
         }
 
-        container.PageBreak();
         container.Column(column =>
         {
             column.Spacing(ItemGap);
+            column.Item().PageBreak();
             column.Item().Text("Details").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
             column.Item().Text("Extended interpretation and stability context for longer runs:");
             BuildBulletList(column, new[]
