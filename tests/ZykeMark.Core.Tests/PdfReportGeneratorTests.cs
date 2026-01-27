@@ -71,6 +71,23 @@ public class PdfReportGeneratorTests
         Assert.Equal(1, CountPdfPages(pdfPath));
     }
 
+    [Fact]
+    public void Generate_AddsDetailsPage_ForLargeRuns()
+    {
+        var sessionFolder = CreateSessionFolder();
+        WriteSummary(sessionFolder, includeCpuGpu: true, frameCount: 25_000);
+        WriteChunk(sessionFolder);
+
+        var pdfPath = GenerateReport(sessionFolder);
+
+        Assert.True(new FileInfo(pdfPath).Length > 1_000);
+        Assert.Equal(2, CountPdfPages(pdfPath));
+
+        var text = ExtractPdfText(pdfPath);
+        Assert.Contains("Details", text);
+        Assert.Contains("Extended interpretation", text);
+    }
+
     private static string GenerateReport(string sessionFolder)
     {
         var tokensPath = ReportGenerator.FindBrandTokensPath(AppContext.BaseDirectory);
@@ -136,6 +153,17 @@ public class PdfReportGeneratorTests
         return countMatches
             .Select(match => int.TryParse(match.Groups[1].Value, out var count) ? count : 0)
             .Max();
+    }
+
+    private static string ExtractPdfText(string pdfPath)
+    {
+        var bytes = File.ReadAllBytes(pdfPath);
+        if (bytes.Length == 0)
+        {
+            throw new InvalidOperationException("PDF output is empty.");
+        }
+
+        return Encoding.ASCII.GetString(bytes);
     }
 
     private static void WriteChunk(string sessionFolder)

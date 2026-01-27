@@ -11,6 +11,9 @@ namespace ZykeMark.Infrastructure.Reporting;
 public sealed class ReportGenerator
 {
     private readonly BrandTheme _theme;
+    private const float SectionGap = 6;
+    private const float ItemGap = 2;
+    private const float SectionTitleSize = 13;
 
     public ReportGenerator(BrandTheme theme)
     {
@@ -40,8 +43,8 @@ public sealed class ReportGenerator
         {
             container.Page(page =>
             {
-                page.Margin(30);
-                page.DefaultTextStyle(text => text.FontFamily("Segoe UI").FontSize(11).FontColor(_theme.Text));
+                page.Margin(26);
+                page.DefaultTextStyle(text => text.FontFamily("Segoe UI").FontSize(10.5f).FontColor(_theme.Text));
                 page.PageColor(_theme.Background);
 
                 page.Header().Column(header =>
@@ -259,17 +262,22 @@ public sealed class ReportGenerator
 
     private void BuildContent(IContainer container, ReportData data, ReportInsights insights)
     {
+        var verdict = BuildVerdict(data, insights);
+        var nextRunItems = BuildNextRunItems(data, insights);
+
         container.PaddingVertical(10).Column(column =>
         {
+            column.Spacing(SectionGap);
             column.Item().Element(section => BuildCaptureDetails(section, data));
+            column.Item().Element(section => BuildVerdict(section, verdict));
             column.Item().Element(section => BuildRunConfig(section, data));
             column.Item().Element(section => BuildKeyMetrics(section, data));
             column.Item().Element(section => BuildCpuGpu(section, data));
             column.Item().Element(section => BuildStability(section, data));
             column.Item().ShowEntire().Element(section => BuildDataQuality(section, data, insights));
             column.Item().Element(section => BuildInterpretationNotes(section, insights));
-            column.Item().ShowEntire().Element(section => BuildNextSteps(section, data));
-            column.Item().ShowEntire().Element(section => BuildNextRunChecklist(section, data));
+            column.Item().ShowEntire().Element(section => BuildNextSteps(section, data, nextRunItems));
+            column.Item().Element(section => BuildDetailsPage(section, data, verdict));
         });
     }
 
@@ -277,7 +285,8 @@ public sealed class ReportGenerator
     {
         container.Column(column =>
         {
-            column.Item().Text("Capture Details").FontSize(12).FontColor(_theme.Primary).SemiBold();
+            column.Spacing(ItemGap);
+            column.Item().Text("Capture Details").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
             column.Item().Text(
                 $"Target: {ValueOrNotProvided(data.CaptureTarget)} | " +
                 $"Mode: {ValueOrNotProvided(data.CaptureMode)} | " +
@@ -286,11 +295,28 @@ public sealed class ReportGenerator
         });
     }
 
+    private void BuildVerdict(IContainer container, Verdict verdict)
+    {
+        container.Column(column =>
+        {
+            column.Spacing(ItemGap);
+            column.Item().Text("Verdict / Summary").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
+            column.Item().Row(row =>
+            {
+                row.Spacing(6);
+                row.RelativeItem().Element(card => BuildVerdictChip(card, "Bound", verdict.Bound));
+                row.RelativeItem().Element(card => BuildVerdictChip(card, "Stability", verdict.Stability));
+                row.RelativeItem().Element(card => BuildVerdictChip(card, "Confidence", verdict.Confidence));
+            });
+        });
+    }
+
     private void BuildRunConfig(IContainer container, ReportData data)
     {
         container.Column(column =>
         {
-            column.Item().Text("System & Run Config").FontSize(14).FontColor(_theme.Primary).SemiBold();
+            column.Spacing(ItemGap);
+            column.Item().Text("System & Run Config").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
             column.Item().Text($"API: {ValueOrNotProvided(data.RunConfig.Api)}");
             column.Item().Text($"Resolution: {ValueOrNotProvided(data.RunConfig.Resolution)}");
             column.Item().Text($"Preset: {ValueOrNotProvided(data.RunConfig.Preset)}");
@@ -304,7 +330,7 @@ public sealed class ReportGenerator
 
             if (warnings.Count > 0)
             {
-                column.Item().PaddingTop(6).Row(row =>
+                column.Item().PaddingTop(ItemGap).Row(row =>
                 {
                     row.ConstantItem(70).Element(badge => BuildSeverityBadge(badge, "Info", Severity.Info));
                     row.RelativeItem().Text($"Comparability warnings: Missing {string.Join(", ", warnings)}.");
@@ -317,21 +343,25 @@ public sealed class ReportGenerator
     {
         container.Column(column =>
         {
-            column.Item().PaddingTop(10).Text("Key Performance Metrics").FontSize(14).FontColor(_theme.Primary).SemiBold();
-            column.Item().PaddingTop(6).Column(grid =>
+            column.Item().Text("Key Performance Metrics").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
+            column.Item().PaddingTop(ItemGap).Column(grid =>
             {
+                grid.Spacing(ItemGap);
                 grid.Item().Row(row =>
                 {
+                    row.Spacing(ItemGap);
                     row.RelativeItem().Element(card => BuildMetricCard(card, "Avg FPS", data.AvgFps.ToString("F1", CultureInfo.InvariantCulture)));
                     row.RelativeItem().Element(card => BuildMetricCard(card, "1% Low", data.OnePercentLowFps.ToString("F1", CultureInfo.InvariantCulture)));
                 });
                 grid.Item().Row(row =>
                 {
+                    row.Spacing(ItemGap);
                     row.RelativeItem().Element(card => BuildMetricCard(card, "0.1% Low", data.PointOnePercentLowFps.ToString("F1", CultureInfo.InvariantCulture)));
                     row.RelativeItem().Element(card => BuildMetricCard(card, "P99 Frame Time (ms)", data.P99FrameTimeMs.ToString("F2", CultureInfo.InvariantCulture)));
                 });
                 grid.Item().Row(row =>
                 {
+                    row.Spacing(ItemGap);
                     row.RelativeItem().Element(card => BuildMetricCard(card, "Avg Frame Time (ms)", data.AvgFrameTimeMs.ToString("F2", CultureInfo.InvariantCulture)));
                     row.RelativeItem().Element(card => BuildMetricCard(card, "Duration", FormatDuration(data.DurationMs)));
                 });
@@ -343,7 +373,8 @@ public sealed class ReportGenerator
     {
         container.Column(column =>
         {
-            column.Item().PaddingTop(10).Text("CPU vs GPU Balance").FontSize(14).FontColor(_theme.Primary).SemiBold();
+            column.Spacing(ItemGap);
+            column.Item().Text("CPU vs GPU Balance").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
             column.Item().Text($"Avg CPU Frame Time: {FormatNullableMs(data.AvgCpuFrameTimeMs)}");
             column.Item().Text($"Avg GPU Frame Time: {FormatNullableMs(data.AvgGpuFrameTimeMs)}");
             column.Item().Text($"Balance Hint: {GetBalanceHint(data.AvgCpuFrameTimeMs, data.AvgGpuFrameTimeMs)}");
@@ -354,7 +385,8 @@ public sealed class ReportGenerator
     {
         container.Column(column =>
         {
-            column.Item().PaddingTop(10).Text("Stability / Stutter").FontSize(14).FontColor(_theme.Primary).SemiBold();
+            column.Spacing(ItemGap);
+            column.Item().Text("Stability / Stutter").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
             column.Item().Text($"P99 Frame Time: {data.P99FrameTimeMs.ToString("F2", CultureInfo.InvariantCulture)} ms");
             if (data.ChunkStats.HasData)
             {
@@ -373,7 +405,8 @@ public sealed class ReportGenerator
     {
         container.Column(column =>
         {
-            column.Item().PaddingTop(10).Text("Data Quality & Context").FontSize(14).FontColor(_theme.Primary).SemiBold();
+            column.Spacing(ItemGap);
+            column.Item().Text("Data Quality & Context").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
 
             if (insights.Flags.Count == 0)
             {
@@ -396,7 +429,8 @@ public sealed class ReportGenerator
     {
         container.Column(column =>
         {
-            column.Item().PaddingTop(10).Text("Interpretation Notes").FontSize(14).FontColor(_theme.Primary).SemiBold();
+            column.Spacing(ItemGap);
+            column.Item().Text("Interpretation Notes").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
             var notes = new List<string>
             {
                 "1%/0.1% lows can be distorted by focus loss, background activity, or overlays.",
@@ -412,11 +446,15 @@ public sealed class ReportGenerator
         });
     }
 
-    private void BuildNextSteps(IContainer container, ReportData data)
+    private void BuildNextSteps(IContainer container, ReportData data, IReadOnlyList<string> nextRunItems)
     {
         container.Column(column =>
         {
-            column.Item().PaddingTop(10).Text("Actionable Next Steps").FontSize(14).FontColor(_theme.Primary).SemiBold();
+            column.Spacing(ItemGap);
+            column.Item().Text("Next Steps").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
+            column.Item().Text("Fix in next run").FontSize(10).FontColor(_theme.Primary).SemiBold();
+            BuildBulletList(column, nextRunItems);
+            column.Item().PaddingTop(ItemGap).Text("Performance actions").FontSize(10).FontColor(_theme.Primary).SemiBold();
             var hint = GetBalanceHint(data.AvgCpuFrameTimeMs, data.AvgGpuFrameTimeMs);
 
             if (hint == "Likely CPU-bound")
@@ -448,24 +486,33 @@ public sealed class ReportGenerator
         });
     }
 
-    private void BuildNextRunChecklist(IContainer container, ReportData data)
+    private void BuildDetailsPage(IContainer container, ReportData data, Verdict verdict)
     {
-        var missing = new List<string>();
-        if (string.IsNullOrWhiteSpace(data.GameName)) missing.Add("Game (e.g., MyGame)");
-        if (string.IsNullOrWhiteSpace(data.BuildVersion)) missing.Add("Build (e.g., 1.0.0)");
-        if (string.IsNullOrWhiteSpace(data.RunConfig.Api)) missing.Add("API (e.g., DX12)");
-        if (string.IsNullOrWhiteSpace(data.RunConfig.Resolution)) missing.Add("Resolution (e.g., 1920x1080)");
-        if (string.IsNullOrWhiteSpace(data.RunConfig.Preset)) missing.Add("Preset (e.g., High)");
-
-        if (missing.Count == 0)
+        if (!verdict.IncludeDetailsPage)
         {
             return;
         }
 
+        container.PageBreak();
         container.Column(column =>
         {
-            column.Item().PaddingTop(10).Text("Next-Run Checklist").FontSize(14).FontColor(_theme.Primary).SemiBold();
-            BuildBulletList(column, missing.Select(item => $"Provide {item}"));
+            column.Spacing(ItemGap);
+            column.Item().Text("Details").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
+            column.Item().Text("Extended interpretation and stability context for longer runs:");
+            BuildBulletList(column, new[]
+            {
+                $"Frame count: {data.FrameCount.ToString("N0", CultureInfo.InvariantCulture)}",
+                $"P99 frame time: {data.P99FrameTimeMs.ToString("F2", CultureInfo.InvariantCulture)} ms",
+                $"Worst frame time: {data.ChunkStats.WorstFrameTimeMs.ToString("F2", CultureInfo.InvariantCulture)} ms",
+                $"Stutter >= 50ms: {data.ChunkStats.StutterEvents50Ms}",
+                $"Stutter >= 100ms: {data.ChunkStats.StutterEvents100Ms}"
+            });
+            column.Item().PaddingTop(ItemGap).Text("Notes").FontSize(10).FontColor(_theme.Primary).SemiBold();
+            BuildBulletList(column, new[]
+            {
+                "Use comparable settings for meaningful trend lines.",
+                "Capture longer runs when investigating intermittent spikes."
+            });
         });
     }
 
@@ -513,7 +560,8 @@ public sealed class ReportGenerator
     {
         container.Border(0.5f).BorderColor(_theme.Primary).Padding(6).Column(column =>
         {
-            column.Item().Text(title).FontSize(10).FontColor(_theme.Primary);
+            column.Spacing(ItemGap);
+            column.Item().Text(title).FontSize(9.5f).FontColor(_theme.Primary);
             column.Item().Text(value).FontSize(14).SemiBold();
         });
     }
@@ -570,6 +618,56 @@ public sealed class ReportGenerator
         return new ReportInsights(flags, desktopCaptureLikely);
     }
 
+    private Verdict BuildVerdict(ReportData data, ReportInsights insights)
+    {
+        var boundHint = GetBalanceHint(data.AvgCpuFrameTimeMs, data.AvgGpuFrameTimeMs);
+        var bound = boundHint switch
+        {
+            "Likely CPU-bound" => "CPU-bound",
+            "Likely GPU-bound" => "GPU-bound",
+            _ => "Unknown"
+        };
+
+        var stability = data.P99FrameTimeMs >= 100 || data.ChunkStats.StutterEvents100Ms >= 20
+            ? "Severe"
+            : data.P99FrameTimeMs >= 50 || data.ChunkStats.StutterEvents50Ms >= 20
+                ? "Moderate"
+                : "OK";
+
+        var hasAllConfig = !string.IsNullOrWhiteSpace(data.RunConfig.Api)
+            && !string.IsNullOrWhiteSpace(data.RunConfig.Resolution)
+            && !string.IsNullOrWhiteSpace(data.RunConfig.Preset);
+
+        var confidence = !hasAllConfig || insights.DesktopCaptureLikely
+            ? "Low"
+            : data.FrameCount < 300
+                ? "Medium"
+                : "High";
+
+        var includeDetailsPage = data.FrameCount >= 20_000 || data.ChunkStats.StutterEvents100Ms >= 50;
+
+        return new Verdict(bound, stability, confidence, includeDetailsPage);
+    }
+
+    private static IReadOnlyList<string> BuildNextRunItems(ReportData data, ReportInsights insights)
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(data.RunConfig.Api)) missing.Add("Provide API (e.g., DX12)");
+        if (string.IsNullOrWhiteSpace(data.RunConfig.Resolution)) missing.Add("Provide Resolution (e.g., 1920x1080)");
+        if (string.IsNullOrWhiteSpace(data.RunConfig.Preset)) missing.Add("Provide Preset (e.g., High)");
+        if (insights.DesktopCaptureLikely) missing.Add("Capture the actual game process (not desktop/DWM)");
+        if (missing.Count == 0) missing.Add("No metadata fixes required for next run.");
+        return missing;
+    }
+
+    private void BuildVerdictChip(IContainer container, string label, string value)
+    {
+        container.Border(0.5f).BorderColor(_theme.Primary).PaddingHorizontal(6).PaddingVertical(4).Row(row =>
+        {
+            row.RelativeItem().Text($"{label}: {value}").FontSize(10).SemiBold();
+        });
+    }
+
     private sealed record ReportData(
         string SessionId,
         DateTime StartedAtUtc,
@@ -616,4 +714,6 @@ public sealed class ReportGenerator
         Warning,
         High
     }
+
+    private sealed record Verdict(string Bound, string Stability, string Confidence, bool IncludeDetailsPage);
 }
