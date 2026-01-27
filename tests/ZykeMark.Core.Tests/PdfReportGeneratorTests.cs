@@ -1,6 +1,6 @@
-using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
+using System.Linq;
+using UglyToad.PdfPig;
 using ZykeMark.Core.Models;
 using ZykeMark.Infrastructure.Reporting;
 using Xunit;
@@ -81,6 +81,7 @@ public class PdfReportGeneratorTests
 
         Assert.True(new FileInfo(pdfPath).Length > 1_000);
         Assert.Equal(2, CountPdfPages(pdfPath));
+        Assert.Contains("Details", ExtractPdfText(pdfPath));
     }
 
     private static string GenerateReport(string sessionFolder)
@@ -132,22 +133,14 @@ public class PdfReportGeneratorTests
 
     private static int CountPdfPages(string pdfPath)
     {
-        var bytes = File.ReadAllBytes(pdfPath);
-        if (bytes.Length == 0)
-        {
-            throw new InvalidOperationException("PDF output is empty.");
-        }
+        using var document = PdfDocument.Open(pdfPath);
+        return document.NumberOfPages;
+    }
 
-        var content = Encoding.ASCII.GetString(bytes);
-        var pageMatches = Regex.Matches(content, "\\/Type\\s*\\/Page\\b", RegexOptions.CultureInvariant);
-        var pagesRootMatches = Regex.Matches(content, "\\/Type\\s*\\/Pages\\b", RegexOptions.CultureInvariant);
-        var pageCount = pageMatches.Count - pagesRootMatches.Count;
-        if (pageCount <= 0)
-        {
-            throw new InvalidOperationException("Unable to determine PDF page count from output.");
-        }
-
-        return pageCount;
+    private static string ExtractPdfText(string pdfPath)
+    {
+        using var document = PdfDocument.Open(pdfPath);
+        return string.Join(Environment.NewLine, document.GetPages().Select(page => page.Text));
     }
 
     private static void WriteChunk(string sessionFolder)

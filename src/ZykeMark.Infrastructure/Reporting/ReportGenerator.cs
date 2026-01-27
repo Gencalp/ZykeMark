@@ -661,7 +661,7 @@ public sealed class ReportGenerator
                 ? "Medium"
                 : "High";
 
-        var includeDetailsPage = data.FrameCount >= 20_000 || data.ChunkStats.StutterEvents100Ms >= 50;
+        var includeDetailsPage = data.FrameCount >= 2_000 || data.ChunkStats.StutterEvents100Ms >= 50;
 
         return new Verdict(bound, stability, confidence, includeDetailsPage);
     }
