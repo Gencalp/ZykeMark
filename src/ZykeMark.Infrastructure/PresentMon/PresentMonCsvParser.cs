@@ -24,6 +24,8 @@ public sealed class PresentMonCsvParser
                 _columnIndexes.Add(headers[i], i);
             }
         }
+
+        EnsureRequiredColumns();
     }
 
     public bool TryParse(string line, out FrameSample sample)
@@ -102,5 +104,18 @@ public sealed class PresentMonCsvParser
         }
 
         return null;
+    }
+
+    private void EnsureRequiredColumns()
+    {
+        var hasTimestamp = _columnIndexes.ContainsKey("CPUStartQPCTime");
+        var hasFrameTime = _columnIndexes.ContainsKey("MsBetweenPresents") || _columnIndexes.ContainsKey("FrameTime");
+
+        if (!hasTimestamp || !hasFrameTime)
+        {
+            var found = string.Join(", ", _columnIndexes.Keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase));
+            throw new InvalidOperationException(
+                $"PresentMon CSV missing required columns. Need CPUStartQPCTime and (MsBetweenPresents or FrameTime). Found: {found}.");
+        }
     }
 }

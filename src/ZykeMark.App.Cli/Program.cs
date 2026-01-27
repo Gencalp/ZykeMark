@@ -4,6 +4,7 @@ using ZykeMark.Core.Models;
 using ZykeMark.Core.Services;
 using ZykeMark.Infrastructure.Collectors;
 using ZykeMark.Infrastructure.PresentMon;
+using ZykeMark.Infrastructure.Reporting;
 
 if (args.Length == 0)
 {
@@ -180,6 +181,37 @@ switch (command)
         Console.WriteLine($"Summary: {summaryPath}");
         return;
     }
+    case "export-pdf":
+    {
+        var sessionId = GetOptionValue(args, "--sessionId");
+        var sessionPath = GetOptionValue(args, "--sessionPath");
+        var outputPath = GetOptionValue(args, "--out");
+
+        if (string.IsNullOrWhiteSpace(sessionId) && string.IsNullOrWhiteSpace(sessionPath))
+        {
+            Console.WriteLine("--sessionId or --sessionPath is required.");
+            return;
+        }
+
+        var resolvedSessionPath = !string.IsNullOrWhiteSpace(sessionPath)
+            ? sessionPath
+            : Path.Combine(GetRootPath(), sessionId!);
+
+        try
+        {
+            var tokensPath = ReportGenerator.FindBrandTokensPath();
+            var theme = BrandTheme.LoadFromTokens(tokensPath);
+            var generator = new ReportGenerator(theme);
+            var pdfPath = generator.Generate(resolvedSessionPath, outputPath);
+            Console.WriteLine($"PDF: {pdfPath}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+
+        return;
+    }
     default:
         Console.WriteLine("Unknown command.");
         PrintUsage();
@@ -195,6 +227,7 @@ static void PrintUsage()
     Console.WriteLine("  zykemark status");
     Console.WriteLine("  zykemark demo-run --seconds 15 --seed 123");
     Console.WriteLine("  zykemark real-run --process_name \"MyGame.exe\" --seconds 15 --presentmon-path \"C:\\\\tools\\\\PresentMon.exe\"");
+    Console.WriteLine("  zykemark export-pdf --sessionId <id> [--out \"C:\\\\path\\\\report.pdf\"]");
 }
 
 static string? GetOptionValue(string[] arguments, string name)

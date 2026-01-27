@@ -17,7 +17,7 @@ public class PresentMonCollectorTests
         var sessionManager = new SessionManager(store, new ZykeMarkAggregator());
         var metadata = sessionManager.StartSession("RealGame", "1.0.0", new RunConfig());
 
-        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "presentmon_sample.csv");
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "presentmon_sample_alt_header.csv");
         var lines = File.ReadAllLines(fixturePath);
         var runner = new FakePresentMonRunner(lines);
         var parser = new PresentMonCsvParser();
