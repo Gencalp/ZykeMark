@@ -803,7 +803,7 @@ public sealed class ReportGenerator
     }
 
     private sealed record Verdict(string Bound, string Stability, string Confidence, bool IncludeDetailsPage);
-}
+
     private static long ResolveEffectiveDurationMs(long aggregatesDurationMs, long? metadataDurationMs, DateTime startedAtUtc, DateTime? endedAtUtc)
     {
         if (aggregatesDurationMs > 0)
@@ -823,3 +823,4 @@ public sealed class ReportGenerator
 
         return 0;
     }
+}
