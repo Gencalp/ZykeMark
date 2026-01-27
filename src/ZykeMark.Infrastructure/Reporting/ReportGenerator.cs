@@ -287,7 +287,8 @@ public sealed class ReportGenerator
             column.Item().ShowEntire().Element(section => BuildNextSteps(section, data, nextRunItems));
             if (verdict.IncludeDetailsPage)
             {
-                column.Item().PageBreak().Element(section => BuildDetailsPage(section, data));
+                column.Item().PageBreak();
+                column.Item().Element(section => BuildDetailsPage(section, data));
             }
         });
     }
