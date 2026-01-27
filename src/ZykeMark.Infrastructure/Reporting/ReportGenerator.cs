@@ -14,6 +14,10 @@ public sealed class ReportGenerator
     private const float SectionGap = 6;
     private const float ItemGap = 2;
     private const float SectionTitleSize = 13;
+    private const int MaxWorstFrames = 20;
+    private const int MaxWarnings = 10;
+    private const int MaxChecklistItems = 10;
+    private const int MaxDetailsBullets = 12;
 
     public ReportGenerator(BrandTheme theme)
     {
@@ -192,6 +196,7 @@ public sealed class ReportGenerator
         var stutter50 = 0;
         var stutter100 = 0;
         double worstFrameTime = 0;
+        var worstFrames = new List<double>(MaxWorstFrames);
 
         foreach (var file in files)
         {
@@ -218,10 +223,13 @@ public sealed class ReportGenerator
                 {
                     worstFrameTime = sample.FrameTimeMs;
                 }
+
+                TrackWorstFrame(worstFrames, sample.FrameTimeMs);
             }
         }
 
-        return new ChunkStats(stutter50, stutter100, worstFrameTime);
+        worstFrames.Sort((left, right) => right.CompareTo(left));
+        return new ChunkStats(stutter50, stutter100, worstFrameTime, worstFrames);
     }
 
     private void BuildHeader(IContainer container, ReportData data)
@@ -277,7 +285,11 @@ public sealed class ReportGenerator
             column.Item().ShowEntire().Element(section => BuildDataQuality(section, data, insights));
             column.Item().Element(section => BuildInterpretationNotes(section, insights));
             column.Item().ShowEntire().Element(section => BuildNextSteps(section, data, nextRunItems));
-            column.Item().Element(section => BuildDetailsPage(section, data, verdict));
+            if (verdict.IncludeDetailsPage)
+            {
+                column.Item().PageBreak();
+                column.Item().Element(section => BuildDetailsPage(section, data));
+            }
         });
     }
 
@@ -414,7 +426,7 @@ public sealed class ReportGenerator
                 return;
             }
 
-            foreach (var flag in insights.Flags)
+            foreach (var flag in insights.Flags.Take(MaxWarnings))
             {
                 column.Item().Row(row =>
                 {
@@ -453,7 +465,7 @@ public sealed class ReportGenerator
             column.Spacing(ItemGap);
             column.Item().Text("Next Steps").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
             column.Item().Text("Fix in next run").FontSize(10).FontColor(_theme.Primary).SemiBold();
-            BuildBulletList(column, nextRunItems);
+            BuildBulletList(column, nextRunItems.Take(MaxChecklistItems));
             column.Item().PaddingTop(ItemGap).Text("Performance actions").FontSize(10).FontColor(_theme.Primary).SemiBold();
             var hint = GetBalanceHint(data.AvgCpuFrameTimeMs, data.AvgGpuFrameTimeMs);
 
@@ -486,33 +498,38 @@ public sealed class ReportGenerator
         });
     }
 
-    private void BuildDetailsPage(IContainer container, ReportData data, Verdict verdict)
+    private void BuildDetailsPage(IContainer container, ReportData data)
     {
-        if (!verdict.IncludeDetailsPage)
-        {
-            return;
-        }
-
         container.Column(column =>
         {
             column.Spacing(ItemGap);
-            column.Item().PageBreak();
             column.Item().Text("Details").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
             column.Item().Text("Extended interpretation and stability context for longer runs:");
             BuildBulletList(column, new[]
+                {
+                    $"Frame count: {data.FrameCount.ToString("N0", CultureInfo.InvariantCulture)}",
+                    $"P99 frame time: {data.P99FrameTimeMs.ToString("F2", CultureInfo.InvariantCulture)} ms",
+                    $"Worst frame time: {data.ChunkStats.WorstFrameTimeMs.ToString("F2", CultureInfo.InvariantCulture)} ms",
+                    $"Stutter >= 50ms: {data.ChunkStats.StutterEvents50Ms}",
+                    $"Stutter >= 100ms: {data.ChunkStats.StutterEvents100Ms}"
+                }
+                .Take(MaxDetailsBullets));
+
+            if (data.ChunkStats.WorstFrameTimes.Count > 0)
             {
-                $"Frame count: {data.FrameCount.ToString("N0", CultureInfo.InvariantCulture)}",
-                $"P99 frame time: {data.P99FrameTimeMs.ToString("F2", CultureInfo.InvariantCulture)} ms",
-                $"Worst frame time: {data.ChunkStats.WorstFrameTimeMs.ToString("F2", CultureInfo.InvariantCulture)} ms",
-                $"Stutter >= 50ms: {data.ChunkStats.StutterEvents50Ms}",
-                $"Stutter >= 100ms: {data.ChunkStats.StutterEvents100Ms}"
-            });
+                column.Item().PaddingTop(ItemGap).Text("Worst frames (top)").FontSize(10).FontColor(_theme.Primary).SemiBold();
+                BuildBulletList(column, data.ChunkStats.WorstFrameTimes
+                    .Select(value => $"{value.ToString("F2", CultureInfo.InvariantCulture)} ms")
+                    .Take(MaxWorstFrames));
+            }
+
             column.Item().PaddingTop(ItemGap).Text("Notes").FontSize(10).FontColor(_theme.Primary).SemiBold();
             BuildBulletList(column, new[]
-            {
-                "Use comparable settings for meaningful trend lines.",
-                "Capture longer runs when investigating intermittent spikes."
-            });
+                {
+                    "Use comparable settings for meaningful trend lines.",
+                    "Capture longer runs when investigating intermittent spikes."
+                }
+                .Take(MaxDetailsBullets));
         });
     }
 
@@ -657,7 +674,7 @@ public sealed class ReportGenerator
         if (string.IsNullOrWhiteSpace(data.RunConfig.Preset)) missing.Add("Provide Preset (e.g., High)");
         if (insights.DesktopCaptureLikely) missing.Add("Capture the actual game process (not desktop/DWM)");
         if (missing.Count == 0) missing.Add("No metadata fixes required for next run.");
-        return missing;
+        return missing.Take(MaxChecklistItems).ToArray();
     }
 
     private void BuildVerdictChip(IContainer container, string label, string value)
@@ -666,6 +683,36 @@ public sealed class ReportGenerator
         {
             row.RelativeItem().Text($"{label}: {value}").FontSize(10).SemiBold();
         });
+    }
+
+    private static void TrackWorstFrame(List<double> worstFrames, double frameTimeMs)
+    {
+        if (frameTimeMs <= 0)
+        {
+            return;
+        }
+
+        if (worstFrames.Count < MaxWorstFrames)
+        {
+            worstFrames.Add(frameTimeMs);
+            return;
+        }
+
+        var minIndex = 0;
+        var minValue = worstFrames[0];
+        for (var i = 1; i < worstFrames.Count; i++)
+        {
+            if (worstFrames[i] < minValue)
+            {
+                minValue = worstFrames[i];
+                minIndex = i;
+            }
+        }
+
+        if (frameTimeMs > minValue)
+        {
+            worstFrames[minIndex] = frameTimeMs;
+        }
     }
 
     private sealed record ReportData(
@@ -689,9 +736,13 @@ public sealed class ReportGenerator
         double? AvgGpuFrameTimeMs,
         ChunkStats ChunkStats);
 
-    private sealed record ChunkStats(int StutterEvents50Ms, int StutterEvents100Ms, double WorstFrameTimeMs)
+    private sealed record ChunkStats(
+        int StutterEvents50Ms,
+        int StutterEvents100Ms,
+        double WorstFrameTimeMs,
+        IReadOnlyList<double> WorstFrameTimes)
     {
-        public static ChunkStats Empty => new(0, 0, 0);
+        public static ChunkStats Empty => new(0, 0, 0, Array.Empty<double>());
         public bool HasData => StutterEvents50Ms > 0 || StutterEvents100Ms > 0 || WorstFrameTimeMs > 0;
     }
 
