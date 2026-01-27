@@ -23,5 +23,9 @@
       <Link>Fixtures\presentmon_sample.csv</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="..\fixtures\presentmon_sample_alt_header.csv">
+      <Link>Fixtures\presentmon_sample_alt_header.csv</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 </Project>

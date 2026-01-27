@@ -8,7 +8,13 @@ public class PresentMonCsvParserTests
     [Fact]
     public void Parser_ReadsFrameSamples_FromFixture()
     {
-        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "presentmon_sample.csv");
+        AssertFixtureParses("presentmon_sample.csv");
+        AssertFixtureParses("presentmon_sample_alt_header.csv");
+    }
+
+    private static void AssertFixtureParses(string fixtureFileName)
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", fixtureFileName);
         var lines = File.ReadAllLines(fixturePath);
 
         var parser = new PresentMonCsvParser();

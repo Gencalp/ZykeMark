@@ -42,43 +42,45 @@ public sealed class PresentMonCsvParser
 
         var fields = line.Split(',', StringSplitOptions.None);
 
-        if (!TryReadDouble(fields, "CPUStartQPCTime", out var timestampMs))
+        if (!TryReadDouble(fields, new[] { "CPUStartQPCTime" }, out var timestampMs))
         {
             return false;
         }
 
-        if (!TryReadDouble(fields, "MsBetweenPresents", out var frameTimeMs))
+        if (!TryReadDouble(fields, new[] { "MsBetweenPresents", "FrameTime" }, out var frameTimeMs))
         {
             return false;
         }
 
-        var cpuFrameTimeMs = TryReadNullableDouble(fields, "MsCPUBusy");
-        var gpuFrameTimeMs = TryReadNullableDouble(fields, "MsGPUTime");
+        var cpuFrameTimeMs = TryReadNullableDouble(fields, new[] { "MsCPUBusy", "CPUBusy" });
+        var gpuFrameTimeMs = TryReadNullableDouble(fields, new[] { "MsGPUTime", "GPUTime" });
 
         sample = new FrameSample(timestampMs, frameTimeMs, cpuFrameTimeMs, gpuFrameTimeMs);
         return true;
     }
 
-    private bool TryReadDouble(string[] fields, string columnName, out double value)
+    private bool TryReadDouble(string[] fields, IEnumerable<string> columnNames, out double value)
     {
         value = 0;
-        if (!_columnIndexes.TryGetValue(columnName, out var index) || index >= fields.Length)
+        var index = GetColumnIndex(columnNames);
+        if (index is null || index.Value >= fields.Length)
         {
             return false;
         }
 
-        var raw = fields[index];
+        var raw = fields[index.Value];
         return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 
-    private double? TryReadNullableDouble(string[] fields, string columnName)
+    private double? TryReadNullableDouble(string[] fields, IEnumerable<string> columnNames)
     {
-        if (!_columnIndexes.TryGetValue(columnName, out var index) || index >= fields.Length)
+        var index = GetColumnIndex(columnNames);
+        if (index is null || index.Value >= fields.Length)
         {
             return null;
         }
 
-        var raw = fields[index];
+        var raw = fields[index.Value];
         if (string.Equals(raw, "NA", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(raw))
         {
             return null;
@@ -87,5 +89,18 @@ public sealed class PresentMonCsvParser
         return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
             ? value
             : null;
+    }
+
+    private int? GetColumnIndex(IEnumerable<string> columnNames)
+    {
+        foreach (var columnName in columnNames)
+        {
+            if (_columnIndexes.TryGetValue(columnName, out var index))
+            {
+                return index;
+            }
+        }
+
+        return null;
     }
 }
