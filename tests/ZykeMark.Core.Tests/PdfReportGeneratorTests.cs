@@ -11,7 +11,7 @@ public class PdfReportGeneratorTests
     public void Generate_CreatesPdf_WithSummaryOnly()
     {
         var sessionFolder = CreateSessionFolder();
-        WriteSummary(sessionFolder, includeCpuGpu: true);
+        WriteSummary(sessionFolder, includeCpuGpu: true, frameCount: 120);
 
         var pdfPath = GenerateReport(sessionFolder);
 
@@ -23,13 +23,24 @@ public class PdfReportGeneratorTests
     public void Generate_CreatesPdf_WithChunks()
     {
         var sessionFolder = CreateSessionFolder();
-        WriteSummary(sessionFolder, includeCpuGpu: true);
+        WriteSummary(sessionFolder, includeCpuGpu: true, frameCount: 600);
         WriteChunk(sessionFolder);
 
         var pdfPath = GenerateReport(sessionFolder);
 
         Assert.True(File.Exists(pdfPath));
         Assert.True(new FileInfo(pdfPath).Length > 5_000);
+    }
+
+    [Fact]
+    public void Generate_DoesNotThrow_ForLowSampleCounts()
+    {
+        var sessionFolder = CreateSessionFolder();
+        WriteSummary(sessionFolder, includeCpuGpu: false, frameCount: 120);
+
+        var pdfPath = GenerateReport(sessionFolder);
+
+        Assert.True(File.Exists(pdfPath));
     }
 
     private static string GenerateReport(string sessionFolder)
@@ -47,7 +58,7 @@ public class PdfReportGeneratorTests
         return sessionFolder;
     }
 
-    private static void WriteSummary(string sessionFolder, bool includeCpuGpu)
+    private static void WriteSummary(string sessionFolder, bool includeCpuGpu, int frameCount)
     {
         var metadata = new SessionMetadata(
             SessionId: Guid.NewGuid().ToString("N"),
@@ -59,7 +70,7 @@ public class PdfReportGeneratorTests
             RunConfig: new RunConfig("DX12", "1920x1080", "High"));
 
         var aggregates = new SessionAggregates(
-            FrameCount: 120,
+            FrameCount: frameCount,
             DurationMs: 60_000,
             AvgFps: 60,
             AvgFrameTimeMs: 16.67,
