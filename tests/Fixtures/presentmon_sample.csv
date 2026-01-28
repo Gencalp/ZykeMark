@@ -1,0 +1,6 @@
+Application,ProcessID,SwapChainAddress,Runtime,SyncInterval,PresentFlags,AllowsTearing,PresentMode,WasBatched,DidFlip,PresentInDwm,CPUStartQPCTime,MsBetweenPresents,MsCPUBusy,MsGPUTime
+MyGame.exe,4242,0x1,DXGI,1,0,0,Composed,0,1,1,1000.0,16.67,5.2,6.1
+MyGame.exe,4242,0x1,DXGI,1,0,0,Composed,0,1,1,1016.67,16.67,NA,7.0
+MyGame.exe,4242,0x1,DXGI,1,0,0,Composed,0,1,1,1033.34,33.34,7.8,NA
+MyGame.exe,4242,0x1,DXGI,1,0,0,Composed,0,1,1,1066.68,16.67,5.1,6.0
+MyGame.exe,4242,0x1,DXGI,1,0,0,Composed,0,1,1,1083.35,16.67,5.0,5.9
