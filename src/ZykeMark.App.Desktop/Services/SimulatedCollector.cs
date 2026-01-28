@@ -35,6 +35,7 @@ public sealed class SimulatedCollector
     }
 
     private void OnTick(object? sender, System.Timers.ElapsedEventArgs e)
+
     {
         var frameTimeMs = 16.67 + (_frameIndex % 120 == 0 ? 20.0 : 0.0);
         var cpu = _frameIndex % 4 == 0 ? frameTimeMs * 0.8 : (double?)null;
