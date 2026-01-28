@@ -1,4 +1,4 @@
-using System.Timers;
+using Timer = System.Timers.Timer;
 using ZykeMark.Core.Models;
 using ZykeMark.Core.Services;
 
