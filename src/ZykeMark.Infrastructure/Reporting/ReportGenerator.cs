@@ -820,7 +820,8 @@ public sealed class ReportGenerator
 
         if (startedAtUtc.HasValue && endedAtUtc.HasValue && endedAtUtc.Value > startedAtUtc.Value)
         {
-            return (long)(endedAtUtc.Value - startedAtUtc).TotalMilliseconds;
+            var span = endedAtUtc.Value - startedAtUtc.Value;
+            return (long)span.TotalMilliseconds;
         }
 
         return 0;
