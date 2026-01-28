@@ -1,3 +1,4 @@
+using System.Timers;   
 using Timer = System.Timers.Timer;
 using ZykeMark.Core.Models;
 using ZykeMark.Core.Services;
@@ -33,7 +34,7 @@ public sealed class SimulatedCollector
         FlushChunk();
     }
 
-    private void OnTick(object? sender, ElapsedEventArgs e)
+    private void OnTick(object? sender, System.Timers.ElapsedEventArgs e)
     {
         var frameTimeMs = 16.67 + (_frameIndex % 120 == 0 ? 20.0 : 0.0);
         var cpu = _frameIndex % 4 == 0 ? frameTimeMs * 0.8 : (double?)null;
