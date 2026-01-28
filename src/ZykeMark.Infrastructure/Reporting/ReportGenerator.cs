@@ -107,7 +107,7 @@ public sealed class ReportGenerator
 
         var durationMs = metadata.GetProperty("DurationMs").ValueKind == JsonValueKind.Null
             ? (long?)null
-            : metadata.GetProperty("DurationMs").GetInt64();
+            : ReadLongMs(metadata.GetProperty("DurationMs"), "metadata.DurationMs");
 
         var gameName = metadata.TryGetProperty("GameName", out var gameProp) ? gameProp.GetString() : null;
         var buildVersion = metadata.TryGetProperty("BuildVersion", out var buildProp) ? buildProp.GetString() : null;
@@ -127,23 +127,23 @@ public sealed class ReportGenerator
 
         var aggregatesDurationMs = aggregates.TryGetProperty("DurationMs", out var durationProp)
             && durationProp.ValueKind != JsonValueKind.Null
-            ? durationProp.GetInt64()
+            ? ReadLongMs(durationProp, "aggregates.DurationMs")
             : 0L;
-        var avgFps = aggregates.GetProperty("AvgFps").GetDouble();
-        var onePercentLow = aggregates.GetProperty("OnePercentLowFps").GetDouble();
-        var pointOnePercentLow = aggregates.GetProperty("PointOnePercentLowFps").GetDouble();
-        var avgFrameTimeMs = aggregates.GetProperty("AvgFrameTimeMs").GetDouble();
-        var p99FrameTimeMs = aggregates.GetProperty("P99FrameTimeMs").GetDouble();
+        var avgFps = ReadDoubleMs(aggregates.GetProperty("AvgFps"), "aggregates.AvgFps");
+        var onePercentLow = ReadDoubleMs(aggregates.GetProperty("OnePercentLowFps"), "aggregates.OnePercentLowFps");
+        var pointOnePercentLow = ReadDoubleMs(aggregates.GetProperty("PointOnePercentLowFps"), "aggregates.PointOnePercentLowFps");
+        var avgFrameTimeMs = ReadDoubleMs(aggregates.GetProperty("AvgFrameTimeMs"), "aggregates.AvgFrameTimeMs");
+        var p99FrameTimeMs = ReadDoubleMs(aggregates.GetProperty("P99FrameTimeMs"), "aggregates.P99FrameTimeMs");
         var frameCount = aggregates.GetProperty("FrameCount").GetInt32();
 
         var avgCpuFrameTimeMs = aggregates.TryGetProperty("AvgCpuFrameTimeMs", out var cpuProp)
             && cpuProp.ValueKind != JsonValueKind.Null
-            ? cpuProp.GetDouble()
+            ? ReadDoubleMs(cpuProp, "aggregates.AvgCpuFrameTimeMs")
             : (double?)null;
 
         var avgGpuFrameTimeMs = aggregates.TryGetProperty("AvgGpuFrameTimeMs", out var gpuProp)
             && gpuProp.ValueKind != JsonValueKind.Null
-            ? gpuProp.GetDouble()
+            ? ReadDoubleMs(gpuProp, "aggregates.AvgGpuFrameTimeMs")
             : (double?)null;
 
         var chunkStats = File.Exists(chunksFolder) || Directory.Exists(chunksFolder)
@@ -818,11 +818,10 @@ public sealed class ReportGenerator
             return metadataDurationMs.Value;
         }
 
-if (startedAtUtc.HasValue && endedAtUtc.HasValue && endedAtUtc.Value > startedAtUtc.Value)
-{
-    var delta = endedAtUtc.Value - startedAtUtc.Value;   // TimeSpan (nullable değil)
-    return (long)delta.TotalMilliseconds;
-}
+        if (startedAtUtc.HasValue && endedAtUtc.HasValue && endedAtUtc.Value > startedAtUtc.Value)
+        {
+            return (long)(endedAtUtc.Value - startedAtUtc).TotalMilliseconds;
+        }
 
         return 0;
     }
@@ -870,5 +869,59 @@ if (startedAtUtc.HasValue && endedAtUtc.HasValue && endedAtUtc.Value > startedAt
     private static string? FormatTimestamp(DateTime? timestamp)
     {
         return timestamp.HasValue ? timestamp.Value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture) : null;
+    }
+
+    private static long ReadLongMs(JsonElement element, string fieldName)
+    {
+        if (element.ValueKind == JsonValueKind.Number)
+        {
+            if (element.TryGetInt64(out var value))
+            {
+                return value;
+            }
+
+            if (element.TryGetDouble(out var doubleValue))
+            {
+                return (long)Math.Round(doubleValue, MidpointRounding.AwayFromZero);
+            }
+        }
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            var raw = element.GetString();
+            if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+            {
+                return (long)Math.Round(parsed, MidpointRounding.AwayFromZero);
+            }
+        }
+
+        throw new FormatException($"Expected a numeric milliseconds value for {fieldName}.");
+    }
+
+    private static double ReadDoubleMs(JsonElement element, string fieldName)
+    {
+        if (element.ValueKind == JsonValueKind.Number)
+        {
+            if (element.TryGetDouble(out var value))
+            {
+                return value;
+            }
+
+            if (element.TryGetInt64(out var intValue))
+            {
+                return intValue;
+            }
+        }
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            var raw = element.GetString();
+            if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+            {
+                return parsed;
+            }
+        }
+
+        throw new FormatException($"Expected a numeric milliseconds value for {fieldName}.");
     }
 }

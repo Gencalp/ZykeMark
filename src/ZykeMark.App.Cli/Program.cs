@@ -206,11 +206,9 @@ switch (command)
             Console.WriteLine($"PDF: {pdfPath}");
         }
         catch (Exception ex)
-{
-        Console.Error.WriteLine("export-pdf failed. See details below:");
-        Console.Error.WriteLine(ex.ToString());
-        Environment.ExitCode = 1;
-}
+        {
+            Console.WriteLine(ex.Message);
+        }
 
         return;
     }

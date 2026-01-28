@@ -123,6 +123,18 @@ public class PdfReportGeneratorTests
         Assert.True(new FileInfo(pdfPath).Length > 1_000);
     }
 
+    [Fact]
+    public void Generate_HandlesFractionalDurationMs()
+    {
+        var sessionFolder = CreateSessionFolder();
+        WriteSummaryWithFractionalDuration(sessionFolder, 8831.9298);
+
+        var pdfPath = GenerateReport(sessionFolder);
+
+        Assert.True(new FileInfo(pdfPath).Length > 1_000);
+        Assert.StartsWith("%PDF", ReadFileHeader(pdfPath));
+    }
+
     private static string GenerateReport(string sessionFolder)
     {
         var tokensPath = ReportGenerator.FindBrandTokensPath(AppContext.BaseDirectory);
@@ -202,6 +214,38 @@ public class PdfReportGeneratorTests
         File.WriteAllText(summaryPath, JsonSerializer.Serialize(payload));
     }
 
+    private static void WriteSummaryWithFractionalDuration(string sessionFolder, double durationMs)
+    {
+        var payload = new
+        {
+            metadata = new
+            {
+                SessionId = Guid.NewGuid().ToString("N"),
+                StartedAtUtc = "2026-01-27T18:55:33.9822215Z",
+                EndedAtUtc = "2026-01-27T18:55:42.8141515Z",
+                DurationMs = durationMs,
+                GameName = "SampleGame",
+                BuildVersion = "1.0.0",
+                RunConfig = new { Api = "DX12", Resolution = "1920x1080", Preset = "High" }
+            },
+            aggregates = new
+            {
+                FrameCount = 1200,
+                DurationMs = durationMs,
+                AvgFps = 60.0,
+                AvgFrameTimeMs = 16.67,
+                P99FrameTimeMs = 25.0,
+                OnePercentLowFps = 40.0,
+                PointOnePercentLowFps = 35.0,
+                AvgCpuFrameTimeMs = 12.5,
+                AvgGpuFrameTimeMs = 14.2
+            }
+        };
+
+        var summaryPath = Path.Combine(sessionFolder, "summary.json");
+        File.WriteAllText(summaryPath, JsonSerializer.Serialize(payload));
+    }
+
     private static int CountPdfPages(string pdfPath)
     {
         using var document = PdfDocument.Open(pdfPath);
@@ -212,6 +256,14 @@ public class PdfReportGeneratorTests
     {
         using var document = PdfDocument.Open(pdfPath);
         return string.Join(Environment.NewLine, document.GetPages().Select(page => page.Text));
+    }
+
+    private static string ReadFileHeader(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+        var buffer = new byte[4];
+        var read = stream.Read(buffer, 0, buffer.Length);
+        return read == 4 ? System.Text.Encoding.ASCII.GetString(buffer) : string.Empty;
     }
 
     private static void WriteChunk(string sessionFolder)
