@@ -9,11 +9,11 @@ public class PresentMonRunnerTests
     /// <summary>
     /// Helper to invoke the private FindCsvOutputFile method for testing.
     /// </summary>
-    private static string? InvokeFindCsvOutputFile(PresentMonRunner runner, string expectedCsvPath)
+    private static string? InvokeFindCsvOutputFile(PresentMonRunner runner, string expectedCsvPath, string? exeDirectory = null)
     {
         var method = typeof(PresentMonRunner).GetMethod("FindCsvOutputFile",
             BindingFlags.NonPublic | BindingFlags.Instance);
-        return (string?)method?.Invoke(runner, [expectedCsvPath]);
+        return (string?)method?.Invoke(runner, [expectedCsvPath, exeDirectory]);
     }
 
     /// <summary>
@@ -155,7 +155,70 @@ public class PresentMonRunnerTests
         {
             SafeCleanupTempDir(tempDir);
         }
-    }    [Fact]
+    }
+
+    [Fact]
+    public void FindCsvOutputFile_FindsFileInExeDirectory_WhenNotInExpectedDirectory()
+    {
+        // Test the fallback behavior where PresentMon writes to its executable directory
+        // instead of the expected output directory
+        var expectedDir = Path.Combine(Path.GetTempPath(), "zyke_test_expected_" + Guid.NewGuid().ToString("N"));
+        var exeDir = Path.Combine(Path.GetTempPath(), "zyke_test_exe_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(expectedDir);
+        Directory.CreateDirectory(exeDir);
+
+        try
+        {
+            var expectedPath = Path.Combine(expectedDir, "presentmon.csv");
+            // Simulate PresentMon writing to its executable directory instead
+            var exeDirCsvPath = Path.Combine(exeDir, "PresentMon-2024-01-29T19-55-23.csv");
+            File.WriteAllText(exeDirCsvPath, "Application,ProcessID,CPUStartTime,FrameTime\nGame.exe,1234,1000,16.67");
+
+            var runner = new PresentMonRunner();
+            var result = InvokeFindCsvOutputFile(runner, expectedPath, exeDir);
+
+            Assert.Equal(exeDirCsvPath, result);
+        }
+        finally
+        {
+            SafeCleanupTempDir(expectedDir);
+            SafeCleanupTempDir(exeDir);
+        }
+    }
+
+    [Fact]
+    public void FindCsvOutputFile_PrefersExpectedDirectory_OverExeDirectory()
+    {
+        // When files exist in both directories, the expected directory should take precedence
+        var expectedDir = Path.Combine(Path.GetTempPath(), "zyke_test_expected_" + Guid.NewGuid().ToString("N"));
+        var exeDir = Path.Combine(Path.GetTempPath(), "zyke_test_exe_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(expectedDir);
+        Directory.CreateDirectory(exeDir);
+
+        try
+        {
+            var expectedPath = Path.Combine(expectedDir, "presentmon.csv");
+            // Create file in expected directory
+            var expectedDirCsvPath = Path.Combine(expectedDir, "PresentMon-2024-01-29T20-00-00.csv");
+            File.WriteAllText(expectedDirCsvPath, "Application,ProcessID,CPUStartTime,FrameTime\nGame.exe,1234,1000,16.67");
+            // Also create file in exe directory
+            var exeDirCsvPath = Path.Combine(exeDir, "PresentMon-2024-01-29T19-55-23.csv");
+            File.WriteAllText(exeDirCsvPath, "Application,ProcessID,CPUStartTime,FrameTime\nOther.exe,5678,2000,33.33");
+
+            var runner = new PresentMonRunner();
+            var result = InvokeFindCsvOutputFile(runner, expectedPath, exeDir);
+
+            // Should prefer the file in expected directory
+            Assert.Equal(expectedDirCsvPath, result);
+        }
+        finally
+        {
+            SafeCleanupTempDir(expectedDir);
+            SafeCleanupTempDir(exeDir);
+        }
+    }
+
+    [Fact]
     public void BuildArguments_WithSessionIdAndFolder_IncludesSessionNameAndOutputFile()
     {
         // This is a test for the argument building logic
