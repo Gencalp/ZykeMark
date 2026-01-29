@@ -218,9 +218,10 @@ public sealed class PresentMonRunner : IPresentMonRunner
 
                 var baseName = Path.GetFileNameWithoutExtension(csvPath);
                 var multiCsvPattern = $"{baseName}-*.csv";
+                var expectedDir = Path.GetDirectoryName(csvPath) ?? Directory.GetCurrentDirectory();
                 var searchLocations = string.IsNullOrEmpty(exeDirectory)
-                    ? $"'{csvPath}'"
-                    : $"'{csvPath}' and executable directory '{exeDirectory}'";
+                    ? $"directory '{expectedDir}'"
+                    : $"directories '{expectedDir}' and executable directory '{exeDirectory}'";
                 throw new InvalidOperationException(
                     $"PresentMon did not create output file. Searched for multi_csv pattern '{multiCsvPattern}' and default pattern 'PresentMon-*.csv' in {searchLocations}. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
             }
@@ -233,6 +234,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
                 var expectedDirectory = Path.GetDirectoryName(csvPath);
                 var actualDirectory = Path.GetDirectoryName(actualCsvPath);
                 if (!string.IsNullOrEmpty(expectedDirectory) &&
+                    !string.IsNullOrEmpty(actualDirectory) &&
                     !string.Equals(expectedDirectory, actualDirectory, StringComparison.OrdinalIgnoreCase))
                 {
                     var targetPath = Path.Combine(expectedDirectory, Path.GetFileName(actualCsvPath));
