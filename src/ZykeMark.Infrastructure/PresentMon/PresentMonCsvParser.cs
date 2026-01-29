@@ -44,7 +44,7 @@ public sealed class PresentMonCsvParser
 
         var fields = line.Split(',', StringSplitOptions.None);
 
-        // Try CPUStartQPCTime first (when --qpc_time_ms flag is used), then TimeInSeconds (default output)
+        // Try timestamp columns: CPUStartTime (default), CPUStartQPC, CPUStartQPCTime, CPUStartDateTime, or TimeInSeconds
         if (!TryReadTimestampMs(fields, out var timestampMs))
         {
             return false;
@@ -62,16 +62,22 @@ public sealed class PresentMonCsvParser
         return true;
     }
 
+    // All timestamp column names that are already in milliseconds
+    private static readonly string[] TimestampColumnsMs = { "CPUStartTime", "CPUStartQPC", "CPUStartQPCTime", "CPUStartDateTime" };
+
+    // Timestamp column name that needs conversion from seconds to milliseconds
+    private const string TimeInSecondsColumn = "TimeInSeconds";
+
     private bool TryReadTimestampMs(string[] fields, out double timestampMs)
     {
-        // CPUStartQPCTime is already in milliseconds (when --qpc_time_ms flag is used)
-        if (TryReadDouble(fields, new[] { "CPUStartQPCTime" }, out timestampMs))
+        // CPUStartTime, CPUStartQPC, CPUStartQPCTime, CPUStartDateTime are already in milliseconds
+        if (TryReadDouble(fields, TimestampColumnsMs, out timestampMs))
         {
             return true;
         }
 
-        // TimeInSeconds needs conversion to milliseconds (default PresentMon output)
-        if (TryReadDouble(fields, new[] { "TimeInSeconds" }, out var timeInSeconds))
+        // TimeInSeconds needs conversion to milliseconds (legacy PresentMon output)
+        if (TryReadDouble(fields, new[] { TimeInSecondsColumn }, out var timeInSeconds))
         {
             timestampMs = timeInSeconds * 1000.0;
             return true;
@@ -128,14 +134,15 @@ public sealed class PresentMonCsvParser
 
     private void EnsureRequiredColumns()
     {
-        var hasTimestamp = _columnIndexes.ContainsKey("CPUStartQPCTime") || _columnIndexes.ContainsKey("TimeInSeconds");
+        var hasTimestamp = TimestampColumnsMs.Any(col => _columnIndexes.ContainsKey(col)) || _columnIndexes.ContainsKey(TimeInSecondsColumn);
         var hasFrameTime = _columnIndexes.ContainsKey("MsBetweenPresents") || _columnIndexes.ContainsKey("FrameTime");
 
         if (!hasTimestamp || !hasFrameTime)
         {
+            var acceptedTimestampColumns = string.Join(", ", TimestampColumnsMs.Append(TimeInSecondsColumn));
             var found = string.Join(", ", _columnIndexes.Keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase));
             throw new InvalidOperationException(
-                $"PresentMon CSV missing required columns. Need (CPUStartQPCTime or TimeInSeconds) and (MsBetweenPresents or FrameTime). Found: {found}.");
+                $"PresentMon CSV missing required columns. Need ({acceptedTimestampColumns}) and (MsBetweenPresents or FrameTime). Header columns: [{found}].");
         }
     }
 }
