@@ -79,4 +79,104 @@ public class PresentMonCsvParserTests
         Assert.Contains(samples, sample => sample.CpuFrameTimeMs is null);
         Assert.Contains(samples, sample => sample.GpuFrameTimeMs is null);
     }
+
+    [Fact]
+    public void DiscoverHeaderLine_SkipsPreambleAndFindsHeader()
+    {
+        // Regression test: CSV file with preamble lines like "Started recording."
+        var lines = new[]
+        {
+            "Started recording.",
+            "Stopped recording.",
+            "Application,ProcessID,SwapChainAddress,Runtime,CPUStartTime,FrameTime",
+            "MyGame.exe,1234,0x1,DXGI,1000.0,16.67"
+        };
+
+        var headerLine = PresentMonCsvParser.DiscoverHeaderLine(lines, out var headerLineIndex);
+
+        Assert.NotNull(headerLine);
+        Assert.Equal(2, headerLineIndex);
+        Assert.Contains("Application", headerLine);
+        Assert.Contains("ProcessID", headerLine);
+    }
+
+    [Fact]
+    public void DiscoverHeaderLine_ReturnsNullForInvalidContent()
+    {
+        var lines = new[]
+        {
+            "Started recording.",
+            "Stopped recording.",
+            "Some other garbage"
+        };
+
+        var headerLine = PresentMonCsvParser.DiscoverHeaderLine(lines, out var headerLineIndex);
+
+        Assert.Null(headerLine);
+        Assert.Equal(-1, headerLineIndex);
+    }
+
+    [Fact]
+    public void DiscoverHeaderLine_FindsHeaderAtFirstLine()
+    {
+        var lines = new[]
+        {
+            "Application,ProcessID,CPUStartTime,FrameTime",
+            "MyGame.exe,1234,1000.0,16.67"
+        };
+
+        var headerLine = PresentMonCsvParser.DiscoverHeaderLine(lines, out var headerLineIndex);
+
+        Assert.NotNull(headerLine);
+        Assert.Equal(0, headerLineIndex);
+    }
+
+    [Fact]
+    public void IsValidCsvHeaderLine_ReturnsTrueForValidHeader()
+    {
+        Assert.True(PresentMonCsvParser.IsValidCsvHeaderLine("Application,ProcessID,CPUStartTime,FrameTime"));
+        Assert.True(PresentMonCsvParser.IsValidCsvHeaderLine("Application,ProcessID,SwapChainAddress,Runtime"));
+    }
+
+    [Fact]
+    public void IsValidCsvHeaderLine_ReturnsFalseForPreambleLines()
+    {
+        Assert.False(PresentMonCsvParser.IsValidCsvHeaderLine("Started recording."));
+        Assert.False(PresentMonCsvParser.IsValidCsvHeaderLine("Stopped recording."));
+        Assert.False(PresentMonCsvParser.IsValidCsvHeaderLine(""));
+        Assert.False(PresentMonCsvParser.IsValidCsvHeaderLine(null));
+        Assert.False(PresentMonCsvParser.IsValidCsvHeaderLine("   "));
+    }
+
+    [Fact]
+    public void Parser_ParsesFixtureWithPreamble_UsingDiscoverHeaderLine()
+    {
+        // Regression test: Ensure parsing succeeds for CSV with preamble
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "presentmon_sample_with_preamble.csv");
+        var lines = File.ReadAllLines(fixturePath);
+
+        // Discover the header line (skip preamble)
+        var headerLine = PresentMonCsvParser.DiscoverHeaderLine(lines, out var headerLineIndex);
+        Assert.NotNull(headerLine);
+        Assert.True(headerLineIndex >= 0, "Header should be found");
+
+        // Parse using discovered header
+        var parser = new PresentMonCsvParser();
+        parser.ParseHeader(headerLine!);
+
+        var samples = new List<ZykeMark.Core.Models.FrameSample>();
+        for (var i = headerLineIndex + 1; i < lines.Length; i++)
+        {
+            if (parser.TryParse(lines[i], out var sample))
+            {
+                samples.Add(sample);
+            }
+        }
+
+        // Verify we parsed data rows successfully
+        Assert.NotEmpty(samples);
+        Assert.True(samples.Count >= 5, $"Expected at least 5 samples, got {samples.Count}");
+        Assert.All(samples, sample => Assert.True(sample.FrameTimeMs > 0));
+        Assert.All(samples, sample => Assert.True(sample.TimestampMs > 0));
+    }
 }

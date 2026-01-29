@@ -198,6 +198,8 @@ public sealed class PresentMonRunner : IPresentMonRunner
         Thread.Sleep(100);
 
         const int maxRetries = 3;
+        const int maxLinesToRead = 50;
+
         for (var attempt = 0; attempt < maxRetries; attempt++)
         {
             var actualCsvPath = FindCsvOutputFile(csvPath);
@@ -217,12 +219,36 @@ public sealed class PresentMonRunner : IPresentMonRunner
 
             try
             {
+                Log($"[PresentMon] Selected CSV path: {actualCsvPath}");
+
                 var lines = File.ReadAllLines(actualCsvPath);
-                var dataRows = lines.Length > 1 ? lines.Length - 1 : 0; // Subtract header row
 
-                Log($"[PresentMon] CSV output: {actualCsvPath}, {dataRows} data rows");
+                // Log first 3 lines for debugging
+                var previewLines = lines.Take(3).ToArray();
+                for (var i = 0; i < previewLines.Length; i++)
+                {
+                    Log($"[PresentMon] CSV line {i}: {previewLines[i]}");
+                }
 
-                if (dataRows == 0)
+                // Discover the actual CSV header (skip preamble like "Started recording.")
+                var headerLine = PresentMonCsvParser.DiscoverHeaderLine(lines.Take(maxLinesToRead), out var headerLineIndex);
+
+                if (headerLine is null)
+                {
+                    var firstLines = string.Join(Environment.NewLine, lines.Take(5));
+                    throw new InvalidOperationException(
+                        $"PresentMon output file '{actualCsvPath}' does not contain a valid CSV header. " +
+                        $"Expected header with 'Application,ProcessID,...'. First lines:\n{firstLines}\n" +
+                        $"Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                }
+
+                Log($"[PresentMon] CSV header found at line {headerLineIndex}: {headerLine}");
+
+                // Count data rows (lines after the header)
+                var dataRows = lines.Length - headerLineIndex - 1;
+                Log($"[PresentMon] CSV output: {actualCsvPath}, {dataRows} data rows (header at line {headerLineIndex})");
+
+                if (dataRows <= 0)
                 {
                     throw new InvalidOperationException(
                         $"PresentMon output file '{actualCsvPath}' contains only header (no data rows). Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
