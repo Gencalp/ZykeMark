@@ -16,6 +16,24 @@ public class PresentMonRunnerTests
         return (string?)method?.Invoke(runner, [expectedCsvPath]);
     }
 
+    /// <summary>
+    /// Safely cleans up a temporary test directory, ignoring any exceptions.
+    /// </summary>
+    private static void SafeCleanupTempDir(string tempDir)
+    {
+        try
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+        catch
+        {
+            // Ignore cleanup failures - temp directory will be cleaned up by OS eventually
+        }
+    }
+
     [Fact]
     public void FindCsvOutputFile_ReturnsExactPath_WhenFileExists()
     {
@@ -34,7 +52,7 @@ public class PresentMonRunnerTests
         }
         finally
         {
-            Directory.Delete(tempDir, recursive: true);
+            SafeCleanupTempDir(tempDir);
         }
     }
 
@@ -58,7 +76,7 @@ public class PresentMonRunnerTests
         }
         finally
         {
-            Directory.Delete(tempDir, recursive: true);
+            SafeCleanupTempDir(tempDir);
         }
     }
 
@@ -84,7 +102,7 @@ public class PresentMonRunnerTests
         }
         finally
         {
-            Directory.Delete(tempDir, recursive: true);
+            SafeCleanupTempDir(tempDir);
         }
     }
 
@@ -106,7 +124,7 @@ public class PresentMonRunnerTests
         }
         finally
         {
-            Directory.Delete(tempDir, recursive: true);
+            SafeCleanupTempDir(tempDir);
         }
     }
 
@@ -135,12 +153,9 @@ public class PresentMonRunnerTests
         }
         finally
         {
-            Directory.Delete(tempDir, recursive: true);
+            SafeCleanupTempDir(tempDir);
         }
-    }
-
-
-    [Fact]
+    }    [Fact]
     public void BuildArguments_WithSessionIdAndFolder_IncludesSessionNameAndOutputFile()
     {
         // This is a test for the argument building logic
