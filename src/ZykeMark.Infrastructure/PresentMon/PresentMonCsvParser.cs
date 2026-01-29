@@ -45,17 +45,7 @@ public sealed class PresentMonCsvParser
         var fields = line.Split(',', StringSplitOptions.None);
 
         // Try CPUStartQPCTime first (when --qpc_time_ms flag is used), then TimeInSeconds (default output)
-        double timestampMs;
-        if (TryReadDouble(fields, new[] { "CPUStartQPCTime" }, out timestampMs))
-        {
-            // Already in milliseconds when using --qpc_time_ms
-        }
-        else if (TryReadDouble(fields, new[] { "TimeInSeconds" }, out var timeInSeconds))
-        {
-            // Convert seconds to milliseconds
-            timestampMs = timeInSeconds * 1000.0;
-        }
-        else
+        if (!TryReadTimestampMs(fields, out var timestampMs))
         {
             return false;
         }
@@ -70,6 +60,25 @@ public sealed class PresentMonCsvParser
 
         sample = new FrameSample(timestampMs, frameTimeMs, cpuFrameTimeMs, gpuFrameTimeMs);
         return true;
+    }
+
+    private bool TryReadTimestampMs(string[] fields, out double timestampMs)
+    {
+        // CPUStartQPCTime is already in milliseconds (when --qpc_time_ms flag is used)
+        if (TryReadDouble(fields, new[] { "CPUStartQPCTime" }, out timestampMs))
+        {
+            return true;
+        }
+
+        // TimeInSeconds needs conversion to milliseconds (default PresentMon output)
+        if (TryReadDouble(fields, new[] { "TimeInSeconds" }, out var timeInSeconds))
+        {
+            timestampMs = timeInSeconds * 1000.0;
+            return true;
+        }
+
+        timestampMs = 0;
+        return false;
     }
 
     private bool TryReadDouble(string[] fields, IEnumerable<string> columnNames, out double value)
