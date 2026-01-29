@@ -44,7 +44,7 @@ public sealed class PresentMonCsvParser
 
         var fields = line.Split(',', StringSplitOptions.None);
 
-        // Try CPUStartQPCTime first (when --qpc_time_ms flag is used), then TimeInSeconds (default output)
+        // Try timestamp columns: CPUStartTime (default), CPUStartQPC, CPUStartQPCTime, CPUStartDateTime, or TimeInSeconds
         if (!TryReadTimestampMs(fields, out var timestampMs))
         {
             return false;
