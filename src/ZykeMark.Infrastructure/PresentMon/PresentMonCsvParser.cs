@@ -44,7 +44,18 @@ public sealed class PresentMonCsvParser
 
         var fields = line.Split(',', StringSplitOptions.None);
 
-        if (!TryReadDouble(fields, new[] { "CPUStartQPCTime" }, out var timestampMs))
+        // Try CPUStartQPCTime first (when --qpc_time_ms flag is used), then TimeInSeconds (default output)
+        double timestampMs;
+        if (TryReadDouble(fields, new[] { "CPUStartQPCTime" }, out timestampMs))
+        {
+            // Already in milliseconds when using --qpc_time_ms
+        }
+        else if (TryReadDouble(fields, new[] { "TimeInSeconds" }, out var timeInSeconds))
+        {
+            // Convert seconds to milliseconds
+            timestampMs = timeInSeconds * 1000.0;
+        }
+        else
         {
             return false;
         }
@@ -108,14 +119,14 @@ public sealed class PresentMonCsvParser
 
     private void EnsureRequiredColumns()
     {
-        var hasTimestamp = _columnIndexes.ContainsKey("CPUStartQPCTime");
+        var hasTimestamp = _columnIndexes.ContainsKey("CPUStartQPCTime") || _columnIndexes.ContainsKey("TimeInSeconds");
         var hasFrameTime = _columnIndexes.ContainsKey("MsBetweenPresents") || _columnIndexes.ContainsKey("FrameTime");
 
         if (!hasTimestamp || !hasFrameTime)
         {
             var found = string.Join(", ", _columnIndexes.Keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase));
             throw new InvalidOperationException(
-                $"PresentMon CSV missing required columns. Need CPUStartQPCTime and (MsBetweenPresents or FrameTime). Found: {found}.");
+                $"PresentMon CSV missing required columns. Need (CPUStartQPCTime or TimeInSeconds) and (MsBetweenPresents or FrameTime). Found: {found}.");
         }
     }
 }

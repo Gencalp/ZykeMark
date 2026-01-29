@@ -10,6 +10,7 @@ public class PresentMonCsvParserTests
     {
         AssertFixtureParses("presentmon_sample.csv");
         AssertFixtureParses("presentmon_sample_alt_header.csv");
+        AssertFixtureParses("presentmon_sample_timeinseconds.csv");
     }
 
     private static void AssertFixtureParses(string fixtureFileName)
