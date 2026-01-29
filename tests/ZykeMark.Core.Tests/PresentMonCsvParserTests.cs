@@ -11,6 +11,8 @@ public class PresentMonCsvParserTests
         AssertFixtureParses("presentmon_sample.csv");
         AssertFixtureParses("presentmon_sample_alt_header.csv");
         AssertFixtureParses("presentmon_sample_timeinseconds.csv");
+        AssertFixtureParses("presentmon_sample_cpustarttime.csv");
+        AssertFixtureParses("presentmon_sample_qpctime.csv");
     }
 
     [Fact]
@@ -24,6 +26,34 @@ public class PresentMonCsvParserTests
 
         Assert.True(parser.TryParse("Game.exe,1234,2.5,16.67", out sample));
         Assert.Equal(2500.0, sample.TimestampMs, precision: 2);
+    }
+
+    [Fact]
+    public void Parser_ParsesCPUStartTimeAsMilliseconds()
+    {
+        var parser = new PresentMonCsvParser();
+        parser.ParseHeader("Application,ProcessID,CPUStartTime,FrameTime");
+
+        Assert.True(parser.TryParse("Game.exe,1234,1000.0,16.67", out var sample));
+        Assert.Equal(1000.0, sample.TimestampMs, precision: 2);
+        Assert.Equal(16.67, sample.FrameTimeMs, precision: 2);
+
+        Assert.True(parser.TryParse("Game.exe,1234,2500.0,16.67", out sample));
+        Assert.Equal(2500.0, sample.TimestampMs, precision: 2);
+    }
+
+    [Fact]
+    public void Parser_ErrorMessage_ListsHeaderColumns()
+    {
+        var parser = new PresentMonCsvParser();
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => parser.ParseHeader("Application,ProcessID,UnknownColumn,SomeOtherColumn"));
+
+        Assert.Contains("Header columns:", exception.Message);
+        Assert.Contains("Application", exception.Message);
+        Assert.Contains("ProcessID", exception.Message);
+        Assert.Contains("UnknownColumn", exception.Message);
+        Assert.Contains("CPUStartTime", exception.Message);
     }
 
     private static void AssertFixtureParses(string fixtureFileName)
