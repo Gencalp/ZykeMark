@@ -22,6 +22,7 @@ public sealed class SessionOrchestrationService : IDisposable
     private string? _sessionId;
     private string? _sessionFolder;
     private string? _chunksFolder;
+    private SessionMetadata? _sessionMetadata;
 
     // Configuration for collector mode
     private readonly bool _useSimulatedMode;
@@ -60,6 +61,7 @@ public sealed class SessionOrchestrationService : IDisposable
             _logger.Log($"Starting session - Game: {gameName ?? "(none)"}, Build: {buildVersion ?? "(none)"}");
 
             var metadata = _sessionManager.StartSession(gameName, buildVersion, runConfig);
+            _sessionMetadata = metadata;
             _sessionId = metadata.SessionId;
             _sessionFolder = Path.Combine(GetSessionsRoot(), metadata.SessionId);
             _chunksFolder = Path.Combine(_sessionFolder, "chunks");
@@ -106,7 +108,7 @@ public sealed class SessionOrchestrationService : IDisposable
             throw new InvalidOperationException("CollectAsync is not applicable in simulated mode.");
         }
 
-        if (string.IsNullOrWhiteSpace(_sessionId) || string.IsNullOrWhiteSpace(_sessionFolder))
+        if (string.IsNullOrWhiteSpace(_sessionId) || string.IsNullOrWhiteSpace(_sessionFolder) || _sessionMetadata is null)
         {
             throw new InvalidOperationException("No active session. Call StartSession first.");
         }
@@ -132,7 +134,7 @@ public sealed class SessionOrchestrationService : IDisposable
             var collector = new PresentMonCollector(
                 _localStore,
                 _sessionId,
-                DateTime.UtcNow,
+                _sessionMetadata.StartedAtUtc,
                 runner,
                 parser,
                 runOptions,

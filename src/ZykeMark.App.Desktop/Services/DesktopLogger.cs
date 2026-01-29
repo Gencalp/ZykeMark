@@ -27,15 +27,26 @@ public sealed class DesktopLogger : IDisposable
 
         lock (_lock)
         {
+            if (_disposed) return; // Double-check after acquiring lock
+
             try
             {
-                EnsureWriter();
-                _writer?.WriteLine(timestamped);
-                _writer?.Flush();
+                // Thread-safe writer initialization inside the lock
+                if (_writer is null)
+                {
+                    _writer = new StreamWriter(_logPath, append: true) { AutoFlush = true };
+                }
+                _writer.WriteLine(timestamped);
+                _writer.Flush();
             }
-            catch
+            catch (IOException)
             {
-                // Logging should never throw
+                // IO errors may occur if disk is full or file is locked
+                // Silently ignore to prevent logging from crashing the app
+            }
+            catch (ObjectDisposedException)
+            {
+                // Writer was disposed between check and use
             }
         }
     }
@@ -48,18 +59,14 @@ public sealed class DesktopLogger : IDisposable
         Log(fullMessage);
     }
 
-    private void EnsureWriter()
-    {
-        _writer ??= new StreamWriter(_logPath, append: true) { AutoFlush = true };
-    }
-
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
 
         lock (_lock)
         {
+            if (_disposed) return;
+            _disposed = true;
             _writer?.Dispose();
             _writer = null;
         }

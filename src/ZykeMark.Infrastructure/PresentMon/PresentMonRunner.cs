@@ -158,13 +158,24 @@ public sealed class PresentMonRunner : IPresentMonRunner
             }
 
             var processes = Process.GetProcessesByName(processName);
-            if (processes.Length == 0)
+            try
             {
-                throw new InvalidOperationException(
-                    $"No running process found with name '{options.ProcessName}'. Ensure the target application is running before starting capture.");
-            }
+                if (processes.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"No running process found with name '{options.ProcessName}'. Ensure the target application is running before starting capture.");
+                }
 
-            Log($"[PresentMon] Found {processes.Length} process(es) with name '{options.ProcessName}'");
+                Log($"[PresentMon] Found {processes.Length} process(es) with name '{options.ProcessName}'");
+            }
+            finally
+            {
+                // Dispose all Process objects to free system resources
+                foreach (var process in processes)
+                {
+                    process.Dispose();
+                }
+            }
         }
         else if (options.ProcessId.HasValue)
         {
@@ -183,21 +194,42 @@ public sealed class PresentMonRunner : IPresentMonRunner
 
     private void ValidateCsvOutput(string csvPath, int exitCode, string stdout, string stderr)
     {
-        if (!File.Exists(csvPath))
+        // Wait a short time for file system to finish flushing
+        Thread.Sleep(100);
+
+        const int maxRetries = 3;
+        for (var attempt = 0; attempt < maxRetries; attempt++)
         {
-            throw new InvalidOperationException(
-                $"PresentMon did not create output file '{csvPath}'. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
-        }
+            if (!File.Exists(csvPath))
+            {
+                if (attempt < maxRetries - 1)
+                {
+                    Thread.Sleep(100 * (attempt + 1)); // Exponential backoff
+                    continue;
+                }
+                throw new InvalidOperationException(
+                    $"PresentMon did not create output file '{csvPath}'. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+            }
 
-        var lines = File.ReadAllLines(csvPath);
-        var dataRows = lines.Length > 1 ? lines.Length - 1 : 0; // Subtract header row
+            try
+            {
+                var lines = File.ReadAllLines(csvPath);
+                var dataRows = lines.Length > 1 ? lines.Length - 1 : 0; // Subtract header row
 
-        Log($"[PresentMon] CSV output: {csvPath}, {dataRows} data rows");
+                Log($"[PresentMon] CSV output: {csvPath}, {dataRows} data rows");
 
-        if (dataRows == 0)
-        {
-            throw new InvalidOperationException(
-                $"PresentMon output file '{csvPath}' contains only header (no data rows). Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                if (dataRows == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"PresentMon output file '{csvPath}' contains only header (no data rows). Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                }
+
+                return; // Success
+            }
+            catch (IOException) when (attempt < maxRetries - 1)
+            {
+                Thread.Sleep(100 * (attempt + 1)); // Retry on file access issues
+            }
         }
     }
 
@@ -241,15 +273,14 @@ public sealed class PresentMonRunner : IPresentMonRunner
         parts.Add("--v2_metrics");
         parts.Add("--exclude_dropped");
 
-        // Add unique session name to prevent ETW collisions
+        // Add unique session name and stop existing session to prevent ETW collisions
         if (!string.IsNullOrWhiteSpace(options.SessionId))
         {
             parts.Add("--session_name");
             parts.Add($"ZykeMark_{options.SessionId}");
+            // Only stop existing session when we have a unique session name
+            parts.Add("--stop_existing_session");
         }
-
-        // Always stop existing session to handle collisions robustly
-        parts.Add("--stop_existing_session");
 
         parts.Add("--timed");
         parts.Add(options.DurationSeconds.ToString());
