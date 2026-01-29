@@ -10,6 +10,20 @@ public class PresentMonCsvParserTests
     {
         AssertFixtureParses("presentmon_sample.csv");
         AssertFixtureParses("presentmon_sample_alt_header.csv");
+        AssertFixtureParses("presentmon_sample_timeinseconds.csv");
+    }
+
+    [Fact]
+    public void Parser_ConvertsTimeInSecondsToMilliseconds()
+    {
+        var parser = new PresentMonCsvParser();
+        parser.ParseHeader("Application,ProcessID,TimeInSeconds,MsBetweenPresents");
+
+        Assert.True(parser.TryParse("Game.exe,1234,1.0,16.67", out var sample));
+        Assert.Equal(1000.0, sample.TimestampMs, precision: 2);
+
+        Assert.True(parser.TryParse("Game.exe,1234,2.5,16.67", out sample));
+        Assert.Equal(2500.0, sample.TimestampMs, precision: 2);
     }
 
     private static void AssertFixtureParses(string fixtureFileName)

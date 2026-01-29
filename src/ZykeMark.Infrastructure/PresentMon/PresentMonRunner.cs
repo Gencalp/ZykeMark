@@ -269,9 +269,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
         }
 
         parts.Add("--no_console_stats");
-        parts.Add("--qpc_time_ms");
         parts.Add("--v2_metrics");
-        parts.Add("--exclude_dropped");
 
         // Add unique session name and stop existing session to prevent ETW collisions
         if (!string.IsNullOrWhiteSpace(options.SessionId))
