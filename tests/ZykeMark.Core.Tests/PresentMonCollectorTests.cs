@@ -45,4 +45,48 @@ public class PresentMonCollectorTests
         Assert.True(aggregates.GetProperty("AvgFps").GetDouble() > 0);
         Assert.True(aggregates.GetProperty("AvgFrameTimeMs").GetDouble() > 0);
     }
+
+    [Fact]
+    public void Collector_SkipsPreambleLines_BeforeHeader()
+    {
+        // Regression test: PresentMon stdout may include preamble lines like "Started recording."
+        // before the actual CSV header. The collector should skip these lines.
+        var baseDir = Path.Combine(Path.GetTempPath(), "ZykeMarkTests", Guid.NewGuid().ToString("N"));
+        var store = new FileSystemLocalStore(baseDir);
+        var sessionManager = new SessionManager(store, new ZykeMarkAggregator());
+        var metadata = sessionManager.StartSession("RealGame", "1.0.0", new RunConfig());
+
+        // Simulate PresentMon output with preamble lines before the CSV header
+        var linesWithPreamble = new[]
+        {
+            "Started recording.",
+            "Stopped recording.",
+            "Application,ProcessID,SwapChainAddress,Runtime,CPUStartTime,FrameTime,MsCPUBusy,MsGPUTime",
+            "MyGame.exe,4242,0x1,DXGI,1000.0,16.67,5.2,6.1",
+            "MyGame.exe,4242,0x1,DXGI,1016.67,16.67,5.1,6.0",
+            "MyGame.exe,4242,0x1,DXGI,1033.34,16.67,5.0,5.9"
+        };
+
+        var runner = new FakePresentMonRunner(linesWithPreamble);
+        var parser = new PresentMonCsvParser();
+        var runOptions = new PresentMonRunOptions("PresentMon.exe", "MyGame.exe", null, 1);
+
+        var collector = new PresentMonCollector(
+            store,
+            metadata.SessionId,
+            metadata.StartedAtUtc,
+            runner,
+            parser,
+            runOptions);
+
+        // This should not throw - previously it would throw because "Started recording."
+        // was being parsed as the header
+        var samples = collector.Collect(TimeSpan.FromSeconds(1));
+
+        // Verify samples were collected successfully
+        Assert.Equal(3, samples.Count);
+        Assert.All(samples, sample => Assert.True(sample.FrameTimeMs > 0));
+
+        sessionManager.StopSession(metadata.SessionId);
+    }
 }

@@ -71,6 +71,13 @@ public sealed class PresentMonCollector : ICollector
 
                 if (!headerParsed)
                 {
+                    // Skip preamble lines (e.g., "Started recording.", "Stopped recording.")
+                    // Only treat the line as a header if it looks like a valid CSV header
+                    if (!PresentMonCsvParser.IsValidCsvHeaderLine(line))
+                    {
+                        continue;
+                    }
+
                     _parser.ParseHeader(line);
                     headerParsed = true;
                     continue;
