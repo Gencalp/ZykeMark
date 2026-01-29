@@ -142,7 +142,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
         // Validate output file if file mode was used
         if (useFileOutput && csvPath is not null)
         {
-            ValidateCsvOutput(csvPath, exitCode, stdoutBuilder.ToString(), stderrBuilder.ToString());
+            ValidateCsvOutput(csvPath, exePath, exitCode, stdoutBuilder.ToString(), stderrBuilder.ToString());
         }
     }
 
@@ -192,7 +192,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
         }
     }
 
-    private void ValidateCsvOutput(string csvPath, int exitCode, string stdout, string stderr)
+    private void ValidateCsvOutput(string csvPath, string presentMonExePath, int exitCode, string stdout, string stderr)
     {
         // Wait for file system to finish flushing (PresentMon may take time to finalize output)
         Thread.Sleep(250);
@@ -200,9 +200,12 @@ public sealed class PresentMonRunner : IPresentMonRunner
         const int maxRetries = 5;
         const int maxLinesToRead = 50;
 
+        // Get the directory of the PresentMon executable as a fallback search location
+        var exeDirectory = Path.GetDirectoryName(presentMonExePath);
+
         for (var attempt = 0; attempt < maxRetries; attempt++)
         {
-            var actualCsvPath = FindCsvOutputFile(csvPath);
+            var actualCsvPath = FindCsvOutputFile(csvPath, exeDirectory);
             if (actualCsvPath is null)
             {
                 if (attempt < maxRetries - 1)
@@ -215,13 +218,30 @@ public sealed class PresentMonRunner : IPresentMonRunner
 
                 var baseName = Path.GetFileNameWithoutExtension(csvPath);
                 var multiCsvPattern = $"{baseName}-*.csv";
+                var expectedDir = Path.GetDirectoryName(csvPath) ?? Directory.GetCurrentDirectory();
+                var searchLocations = string.IsNullOrEmpty(exeDirectory)
+                    ? $"directory '{expectedDir}'"
+                    : $"directories '{expectedDir}' and executable directory '{exeDirectory}'";
                 throw new InvalidOperationException(
-                    $"PresentMon did not create output file. Searched for '{csvPath}', multi_csv pattern '{multiCsvPattern}', and default pattern 'PresentMon-*.csv'. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                    $"PresentMon did not create output file. Searched for multi_csv pattern '{multiCsvPattern}' and default pattern 'PresentMon-*.csv' in {searchLocations}. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
             }
 
             try
             {
                 Log($"[PresentMon] Selected CSV path: {actualCsvPath}");
+
+                // If the file was found in a different directory, copy it to the expected location
+                var expectedDirectory = Path.GetDirectoryName(csvPath);
+                var actualDirectory = Path.GetDirectoryName(actualCsvPath);
+                if (!string.IsNullOrEmpty(expectedDirectory) &&
+                    !string.IsNullOrEmpty(actualDirectory) &&
+                    !string.Equals(expectedDirectory, actualDirectory, StringComparison.OrdinalIgnoreCase))
+                {
+                    var targetPath = Path.Combine(expectedDirectory, Path.GetFileName(actualCsvPath));
+                    Log($"[PresentMon] Copying CSV from '{actualCsvPath}' to '{targetPath}'");
+                    File.Copy(actualCsvPath, targetPath, overwrite: true);
+                    actualCsvPath = targetPath;
+                }
 
                 var lines = File.ReadAllLines(actualCsvPath);
 
@@ -271,10 +291,12 @@ public sealed class PresentMonRunner : IPresentMonRunner
     /// Finds the CSV output file, handling both standard output, multi_csv mode, and PresentMon's default naming.
     /// Search order:
     /// 1. Exact expected path (e.g., "presentmon.csv")
-    /// 2. Multi_csv pattern: {base}-*.csv (e.g., "presentmon-msedge.exe-9112.csv")
-    /// 3. PresentMon default naming: PresentMon-*.csv (e.g., "PresentMon-2024-01-29T19-55-23.csv")
+    /// 2. Multi_csv pattern in expected directory: {base}-*.csv (e.g., "presentmon-msedge.exe-9112.csv")
+    /// 3. PresentMon default naming in expected directory: PresentMon-*.csv (e.g., "PresentMon-2024-01-29T19-55-23.csv")
+    /// 4. Multi_csv pattern in executable directory (fallback for when PresentMon writes to its own directory)
+    /// 5. PresentMon default naming in executable directory (fallback)
     /// </summary>
-    private string? FindCsvOutputFile(string expectedCsvPath)
+    private string? FindCsvOutputFile(string expectedCsvPath, string? exeDirectory = null)
     {
         // First, check if the exact file exists (standard mode)
         if (File.Exists(expectedCsvPath))
@@ -283,18 +305,49 @@ public sealed class PresentMonRunner : IPresentMonRunner
             return expectedCsvPath;
         }
 
-        // Check for multi_csv output pattern: {base}-{processname}-{pid}.csv
-        var directory = Path.GetDirectoryName(expectedCsvPath);
+        // Get the expected directory
+        var expectedDirectory = Path.GetDirectoryName(expectedCsvPath);
 
         // Handle relative paths without directory separator by using current directory
-        if (string.IsNullOrEmpty(directory))
+        if (string.IsNullOrEmpty(expectedDirectory))
         {
-            directory = Directory.GetCurrentDirectory();
+            expectedDirectory = Directory.GetCurrentDirectory();
         }
 
+        var baseName = Path.GetFileNameWithoutExtension(expectedCsvPath);
+
+        // Search in the expected directory first
+        var result = SearchForCsvInDirectory(expectedDirectory, baseName, "expected");
+        if (result is not null)
+        {
+            return result;
+        }
+
+        // Fallback: Search in the PresentMon executable's directory
+        // This handles the case where PresentMon writes to its own directory instead of the working directory
+        if (!string.IsNullOrEmpty(exeDirectory) &&
+            !string.Equals(exeDirectory, expectedDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            Log($"[PresentMon] Searching fallback location: executable directory '{exeDirectory}'");
+            result = SearchForCsvInDirectory(exeDirectory, baseName, "executable");
+            if (result is not null)
+            {
+                return result;
+            }
+        }
+
+        Log($"[PresentMon] No CSV files found matching expected patterns in any searched location");
+        return null;
+    }
+
+    /// <summary>
+    /// Searches for CSV files matching PresentMon output patterns in the specified directory.
+    /// </summary>
+    private string? SearchForCsvInDirectory(string directory, string baseName, string locationLabel)
+    {
         if (!Directory.Exists(directory))
         {
-            Log($"[PresentMon] Directory does not exist: {directory}");
+            Log($"[PresentMon] {locationLabel} directory does not exist: {directory}");
             return null;
         }
 
@@ -302,15 +355,14 @@ public sealed class PresentMonRunner : IPresentMonRunner
         try
         {
             var allCsvFiles = Directory.GetFiles(directory, "*.csv");
-            Log($"[PresentMon] CSV files in directory: [{string.Join(", ", allCsvFiles.Select(Path.GetFileName))}]");
+            Log($"[PresentMon] CSV files in {locationLabel} directory: [{string.Join(", ", allCsvFiles.Select(Path.GetFileName))}]");
         }
         catch (Exception ex)
         {
-            Log($"[PresentMon] Error listing directory: {ex.Message}");
+            Log($"[PresentMon] Error listing {locationLabel} directory: {ex.Message}");
         }
 
         // Pattern 1: Multi_csv naming: {base}-{processname}-{pid}.csv
-        var baseName = Path.GetFileNameWithoutExtension(expectedCsvPath);
         var multiCsvPattern = $"{baseName}-*.csv";
 
         try
@@ -322,13 +374,13 @@ public sealed class PresentMonRunner : IPresentMonRunner
                 var mostRecent = matchingFiles
                     .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
                     .First();
-                Log($"[PresentMon] Found multi_csv output: {mostRecent}");
+                Log($"[PresentMon] Found multi_csv output in {locationLabel} directory: {mostRecent}");
                 return mostRecent;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            Log($"[PresentMon] Error searching for multi_csv files: {ex.Message}");
+            Log($"[PresentMon] Error searching for multi_csv files in {locationLabel} directory: {ex.Message}");
         }
 
         // Pattern 2: PresentMon default naming: PresentMon-*.csv (when --output_file is ignored)
@@ -343,16 +395,15 @@ public sealed class PresentMonRunner : IPresentMonRunner
                 var mostRecent = defaultFiles
                     .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
                     .First();
-                Log($"[PresentMon] Found default-named output: {mostRecent}");
+                Log($"[PresentMon] Found default-named output in {locationLabel} directory: {mostRecent}");
                 return mostRecent;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            Log($"[PresentMon] Error searching for default-named files: {ex.Message}");
+            Log($"[PresentMon] Error searching for default-named files in {locationLabel} directory: {ex.Message}");
         }
 
-        Log($"[PresentMon] No CSV files found matching expected patterns in {directory}");
         return null;
     }
 
