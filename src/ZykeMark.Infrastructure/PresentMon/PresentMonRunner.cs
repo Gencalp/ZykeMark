@@ -208,8 +208,11 @@ public sealed class PresentMonRunner : IPresentMonRunner
                     Thread.Sleep(100 * (attempt + 1)); // Exponential backoff
                     continue;
                 }
+
+                var baseName = Path.GetFileNameWithoutExtension(csvPath);
+                var multiCsvPattern = $"{baseName}-*.csv";
                 throw new InvalidOperationException(
-                    $"PresentMon did not create output file '{csvPath}'. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                    $"PresentMon did not create output file. Searched for '{csvPath}' and multi_csv pattern '{multiCsvPattern}'. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
             }
 
             try
@@ -237,6 +240,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
     /// <summary>
     /// Finds the CSV output file, handling both standard output and multi_csv mode.
     /// When PresentMon uses --multi_csv, output files are named: {base}-{processname}-{pid}.csv
+    /// (e.g., "presentmon-msedge.exe-9112.csv" for an Edge GPU process)
     /// </summary>
     private string? FindCsvOutputFile(string expectedCsvPath)
     {
@@ -248,11 +252,19 @@ public sealed class PresentMonRunner : IPresentMonRunner
 
         // Check for multi_csv output pattern: {base}-{processname}-{pid}.csv
         var directory = Path.GetDirectoryName(expectedCsvPath);
-        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+
+        // Handle relative paths without directory separator by using current directory
+        if (string.IsNullOrEmpty(directory))
+        {
+            directory = Directory.GetCurrentDirectory();
+        }
+
+        if (!Directory.Exists(directory))
         {
             return null;
         }
 
+        // Pattern matches PresentMon's multi_csv naming: {base}-{processname}-{pid}.csv
         var baseName = Path.GetFileNameWithoutExtension(expectedCsvPath);
         var pattern = $"{baseName}-*.csv";
 
@@ -269,7 +281,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
                 return mostRecent;
             }
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
             Log($"[PresentMon] Error searching for CSV files: {ex.Message}");
         }
