@@ -1,11 +1,19 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace ZykeMark.Infrastructure.PresentMon;
 
 public sealed class PresentMonRunner : IPresentMonRunner
 {
+    private readonly Action<string>? _logger;
+
+    public PresentMonRunner(Action<string>? logger = null)
+    {
+        _logger = logger;
+    }
+
     public async IAsyncEnumerable<string> RunAsync(
         PresentMonRunOptions options,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -25,8 +33,14 @@ public sealed class PresentMonRunner : IPresentMonRunner
             throw new ArgumentException("Process name or process ID must be specified.", nameof(options));
         }
 
+        // Pre-check: Validate that process exists before running PresentMon
+        ValidateProcessExists(options);
+
         var exePath = ResolveExecutablePath(options.PresentMonPath);
-        var arguments = BuildArguments(options);
+        var useFileOutput = !string.IsNullOrWhiteSpace(options.SessionFolder) && !string.IsNullOrWhiteSpace(options.SessionId);
+        var csvPath = useFileOutput ? Path.Combine(options.SessionFolder!, "presentmon.csv") : null;
+        var arguments = BuildArguments(options, csvPath);
+        var workingDirectory = useFileOutput ? options.SessionFolder : null;
 
         var startInfo = new ProcessStartInfo
         {
@@ -38,7 +52,17 @@ public sealed class PresentMonRunner : IPresentMonRunner
             CreateNoWindow = true
         };
 
+        if (!string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            startInfo.WorkingDirectory = workingDirectory;
+        }
+
+        Log($"[PresentMon] Starting: {exePath} {arguments}");
+        Log($"[PresentMon] WorkingDirectory: {workingDirectory ?? "(current)"}");
+
         using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+        var stderrBuilder = new StringBuilder();
+        var stdoutBuilder = new StringBuilder();
 
         try
         {
@@ -54,6 +78,20 @@ public sealed class PresentMonRunner : IPresentMonRunner
                 ex);
         }
 
+        // Capture stderr asynchronously
+        var stderrTask = Task.Run(async () =>
+        {
+            while (!process.StandardError.EndOfStream)
+            {
+                var line = await process.StandardError.ReadLineAsync().ConfigureAwait(false);
+                if (line is not null)
+                {
+                    stderrBuilder.AppendLine(line);
+                    Log($"[PresentMon stderr] {line}");
+                }
+            }
+        }, cancellationToken);
+
         using var registration = cancellationToken.Register(() =>
         {
             try
@@ -68,6 +106,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
             }
         });
 
+        // Read stdout
         while (!process.StandardOutput.EndOfStream && !cancellationToken.IsCancellationRequested)
         {
             var line = await process.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false);
@@ -76,6 +115,8 @@ public sealed class PresentMonRunner : IPresentMonRunner
                 break;
             }
 
+            stdoutBuilder.AppendLine(line);
+
             if (!string.IsNullOrWhiteSpace(line))
             {
                 yield return line;
@@ -83,6 +124,118 @@ public sealed class PresentMonRunner : IPresentMonRunner
         }
 
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            await stderrTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellation
+        }
+
+        var exitCode = process.ExitCode;
+        Log($"[PresentMon] Exit code: {exitCode}");
+        Log($"[PresentMon] stdout captured: {stdoutBuilder.Length} chars");
+        Log($"[PresentMon] stderr captured: {stderrBuilder.Length} chars");
+
+        // Validate output file if file mode was used
+        if (useFileOutput && csvPath is not null)
+        {
+            ValidateCsvOutput(csvPath, exitCode, stdoutBuilder.ToString(), stderrBuilder.ToString());
+        }
+    }
+
+    private void ValidateProcessExists(PresentMonRunOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.ProcessName))
+        {
+            var processName = options.ProcessName!;
+            // Remove .exe extension if present for GetProcessesByName
+            if (processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                processName = processName[..^4];
+            }
+
+            var processes = Process.GetProcessesByName(processName);
+            try
+            {
+                if (processes.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"No running process found with name '{options.ProcessName}'. Ensure the target application is running before starting capture.");
+                }
+
+                Log($"[PresentMon] Found {processes.Length} process(es) with name '{options.ProcessName}'");
+            }
+            finally
+            {
+                // Dispose all Process objects to free system resources
+                foreach (var process in processes)
+                {
+                    process.Dispose();
+                }
+            }
+        }
+        else if (options.ProcessId.HasValue)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(options.ProcessId.Value);
+                Log($"[PresentMon] Found process with PID {options.ProcessId.Value}: {process.ProcessName}");
+            }
+            catch (ArgumentException)
+            {
+                throw new InvalidOperationException(
+                    $"No running process found with PID {options.ProcessId.Value}. Ensure the target application is running before starting capture.");
+            }
+        }
+    }
+
+    private void ValidateCsvOutput(string csvPath, int exitCode, string stdout, string stderr)
+    {
+        // Wait a short time for file system to finish flushing
+        Thread.Sleep(100);
+
+        const int maxRetries = 3;
+        for (var attempt = 0; attempt < maxRetries; attempt++)
+        {
+            if (!File.Exists(csvPath))
+            {
+                if (attempt < maxRetries - 1)
+                {
+                    Thread.Sleep(100 * (attempt + 1)); // Exponential backoff
+                    continue;
+                }
+                throw new InvalidOperationException(
+                    $"PresentMon did not create output file '{csvPath}'. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+            }
+
+            try
+            {
+                var lines = File.ReadAllLines(csvPath);
+                var dataRows = lines.Length > 1 ? lines.Length - 1 : 0; // Subtract header row
+
+                Log($"[PresentMon] CSV output: {csvPath}, {dataRows} data rows");
+
+                if (dataRows == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"PresentMon output file '{csvPath}' contains only header (no data rows). Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                }
+
+                return; // Success
+            }
+            catch (IOException) when (attempt < maxRetries - 1)
+            {
+                Thread.Sleep(100 * (attempt + 1)); // Retry on file access issues
+            }
+        }
+    }
+
+    private void Log(string message)
+    {
+        _logger?.Invoke(message);
     }
 
     private static string ResolveExecutablePath(string? providedPath)
@@ -100,19 +253,38 @@ public sealed class PresentMonRunner : IPresentMonRunner
         return "PresentMon.exe";
     }
 
-    private static string BuildArguments(PresentMonRunOptions options)
+    private static string BuildArguments(PresentMonRunOptions options, string? outputFile)
     {
-        var parts = new List<string>
+        var parts = new List<string>();
+
+        // If we have an output file, use file output mode; otherwise use stdout
+        if (!string.IsNullOrWhiteSpace(outputFile))
         {
-            "--output_stdout",
-            "--no_console_stats",
-            "--qpc_time_ms",
-            "--v2_metrics",
-            "--exclude_dropped",
-            "--timed",
-            options.DurationSeconds.ToString(),
-            "--terminate_after_timed"
-        };
+            parts.Add("--output_file");
+            parts.Add(outputFile);
+        }
+        else
+        {
+            parts.Add("--output_stdout");
+        }
+
+        parts.Add("--no_console_stats");
+        parts.Add("--qpc_time_ms");
+        parts.Add("--v2_metrics");
+        parts.Add("--exclude_dropped");
+
+        // Add unique session name and stop existing session to prevent ETW collisions
+        if (!string.IsNullOrWhiteSpace(options.SessionId))
+        {
+            parts.Add("--session_name");
+            parts.Add($"ZykeMark_{options.SessionId}");
+            // Only stop existing session when we have a unique session name
+            parts.Add("--stop_existing_session");
+        }
+
+        parts.Add("--timed");
+        parts.Add(options.DurationSeconds.ToString());
+        parts.Add("--terminate_after_timed");
 
         if (!string.IsNullOrWhiteSpace(options.ProcessName))
         {

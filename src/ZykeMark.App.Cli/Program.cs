@@ -148,14 +148,21 @@ switch (command)
         var sessionManager = new SessionManager(store, new ZykeMarkAggregator());
         var metadata = sessionManager.StartSession(gameName, buildVersion, new RunConfig());
 
+        // Get session folder path
+        var sessionFolder = Path.Combine(GetRootPath(), metadata.SessionId);
+
+        // Create logger that outputs to console for PresentMon diagnostics
+        void Log(string message) => Console.WriteLine(message);
+
         var runOptions = new PresentMonRunOptions(presentMonPath, processName, processId, (int)Math.Ceiling(durationSeconds));
         var collector = new PresentMonCollector(
             store,
             metadata.SessionId,
             metadata.StartedAtUtc,
-            new PresentMonRunner(),
+            new PresentMonRunner(Log),
             new PresentMonCsvParser(),
-            runOptions);
+            runOptions,
+            sessionFolder);
 
         try
         {
@@ -163,7 +170,7 @@ switch (command)
         }
         catch (InvalidOperationException ex)
         {
-            Console.WriteLine(ex.Message);
+            Console.WriteLine($"Error: {ex.Message}");
             if (ex.InnerException is System.ComponentModel.Win32Exception)
             {
                 Console.WriteLine("PresentMon may require administrator privileges.");
@@ -177,7 +184,7 @@ switch (command)
             Console.WriteLine("No samples collected for this session.");
         }
 
-        Console.WriteLine($"SessionFolder: {Path.Combine(GetRootPath(), metadata.SessionId)}");
+        Console.WriteLine($"SessionFolder: {sessionFolder}");
         Console.WriteLine($"Summary: {summaryPath}");
         return;
     }
