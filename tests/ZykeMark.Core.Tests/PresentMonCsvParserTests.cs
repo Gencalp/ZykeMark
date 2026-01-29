@@ -315,4 +315,70 @@ public class PresentMonCsvParserTests
         Assert.Contains("FrameTime", headers, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("CPUBusy", headers, StringComparer.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// End-to-end regression test: parsing → aggregation under tr-TR culture.
+    /// This simulates the full CLI pipeline to ensure the "No samples collected" issue
+    /// does not occur due to locale-dependent numeric parsing.
+    /// </summary>
+    [Fact]
+    public void EndToEnd_ParsingAndAggregation_UnderTurkishLocale_Succeeds()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUICulture = CultureInfo.CurrentUICulture;
+
+        try
+        {
+            // Set Turkish culture (uses comma as decimal separator)
+            var turkishCulture = new CultureInfo("tr-TR");
+            CultureInfo.CurrentCulture = turkishCulture;
+            CultureInfo.CurrentUICulture = turkishCulture;
+
+            // Verify we're using Turkish locale
+            Assert.Equal(",", turkishCulture.NumberFormat.NumberDecimalSeparator);
+
+            // Load the CPUStartTime + FrameTime fixture (dot-decimal format)
+            var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "presentmon_sample_cpustarttime.csv");
+            var lines = File.ReadAllLines(fixturePath);
+
+            // Parse CSV (same as CLI does)
+            var parser = new PresentMonCsvParser();
+            parser.ParseHeader(lines[0]);
+
+            var samples = new List<ZykeMark.Core.Models.FrameSample>();
+            for (var i = 1; i < lines.Length; i++)
+            {
+                if (parser.TryParse(lines[i], out var sample))
+                {
+                    samples.Add(sample);
+                }
+            }
+
+            // Verify parsing succeeded
+            Assert.NotEmpty(samples);
+            Assert.True(samples.Count >= 5, $"Expected at least 5 samples, got {samples.Count}");
+
+            // Run aggregation (same as CLI does)
+            var aggregator = new ZykeMark.Core.Services.ZykeMarkAggregator();
+            var aggregates = aggregator.Aggregate(samples);
+
+            // Verify aggregation produces valid results
+            Assert.True(aggregates.FrameCount > 0, "FrameCount should be > 0");
+            Assert.True(aggregates.AvgFps > 0, "AvgFps should be > 0");
+            Assert.True(aggregates.AvgFrameTimeMs > 0, "AvgFrameTimeMs should be > 0");
+            Assert.True(aggregates.P99FrameTimeMs > 0, "P99FrameTimeMs should be > 0");
+            Assert.True(aggregates.OnePercentLowFps > 0, "OnePercentLowFps should be > 0");
+            Assert.True(aggregates.DurationMs > 0, "DurationMs should be > 0");
+
+            // Verify that optional CPU/GPU times are properly parsed where present
+            Assert.NotNull(aggregates.AvgCpuFrameTimeMs);
+            Assert.NotNull(aggregates.AvgGpuFrameTimeMs);
+        }
+        finally
+        {
+            // Restore original culture
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUICulture;
+        }
+    }
 }
