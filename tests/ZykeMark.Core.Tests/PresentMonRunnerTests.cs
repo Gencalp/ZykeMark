@@ -1,3 +1,4 @@
+using System.Reflection;
 using ZykeMark.Infrastructure.PresentMon;
 using Xunit;
 
@@ -5,6 +6,140 @@ namespace ZykeMark.Core.Tests;
 
 public class PresentMonRunnerTests
 {
+    /// <summary>
+    /// Helper to invoke the private FindCsvOutputFile method for testing.
+    /// </summary>
+    private static string? InvokeFindCsvOutputFile(PresentMonRunner runner, string expectedCsvPath)
+    {
+        var method = typeof(PresentMonRunner).GetMethod("FindCsvOutputFile",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        return (string?)method?.Invoke(runner, [expectedCsvPath]);
+    }
+
+    [Fact]
+    public void FindCsvOutputFile_ReturnsExactPath_WhenFileExists()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "zyke_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var expectedPath = Path.Combine(tempDir, "presentmon.csv");
+            File.WriteAllText(expectedPath, "Application,ProcessID,CPUStartTime,FrameTime\nGame.exe,1234,1000,16.67");
+
+            var runner = new PresentMonRunner();
+            var result = InvokeFindCsvOutputFile(runner, expectedPath);
+
+            Assert.Equal(expectedPath, result);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FindCsvOutputFile_FindsMultiCsvPattern_WhenExpectedFileMissing()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "zyke_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var expectedPath = Path.Combine(tempDir, "presentmon.csv");
+            // Create a multi_csv file instead of the expected file
+            var multiCsvPath = Path.Combine(tempDir, "presentmon-msedge.exe-1234.csv");
+            File.WriteAllText(multiCsvPath, "Application,ProcessID,CPUStartTime,FrameTime\nGame.exe,1234,1000,16.67");
+
+            var runner = new PresentMonRunner();
+            var result = InvokeFindCsvOutputFile(runner, expectedPath);
+
+            Assert.Equal(multiCsvPath, result);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FindCsvOutputFile_FindsDefaultPresentMonPattern_WhenOutputFileIgnored()
+    {
+        // Regression test: When PresentMon ignores --output_file argument and
+        // falls back to its default naming format (PresentMon-<timestamp>.csv)
+        var tempDir = Path.Combine(Path.GetTempPath(), "zyke_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var expectedPath = Path.Combine(tempDir, "presentmon.csv");
+            // Simulate PresentMon's default naming when it ignores --output_file
+            var defaultPath = Path.Combine(tempDir, "PresentMon-2024-01-29T19-55-23.csv");
+            File.WriteAllText(defaultPath, "Application,ProcessID,CPUStartTime,FrameTime\nGame.exe,1234,1000,16.67");
+
+            var runner = new PresentMonRunner();
+            var result = InvokeFindCsvOutputFile(runner, expectedPath);
+
+            Assert.Equal(defaultPath, result);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FindCsvOutputFile_ReturnsNull_WhenNoMatchingFileExists()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "zyke_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var expectedPath = Path.Combine(tempDir, "presentmon.csv");
+            // No files in directory
+
+            var runner = new PresentMonRunner();
+            var result = InvokeFindCsvOutputFile(runner, expectedPath);
+
+            Assert.Null(result);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FindCsvOutputFile_PrefersExactMatch_OverPatterns()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "zyke_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var expectedPath = Path.Combine(tempDir, "presentmon.csv");
+            File.WriteAllText(expectedPath, "Application,ProcessID,CPUStartTime,FrameTime\nGame.exe,1234,1000,16.67");
+
+            // Also create multi_csv and default pattern files
+            var multiCsvPath = Path.Combine(tempDir, "presentmon-msedge.exe-1234.csv");
+            File.WriteAllText(multiCsvPath, "multi csv content");
+            var defaultPath = Path.Combine(tempDir, "PresentMon-2024-01-29T19-55-23.csv");
+            File.WriteAllText(defaultPath, "default content");
+
+            var runner = new PresentMonRunner();
+            var result = InvokeFindCsvOutputFile(runner, expectedPath);
+
+            // Should prefer the exact match
+            Assert.Equal(expectedPath, result);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+
     [Fact]
     public void BuildArguments_WithSessionIdAndFolder_IncludesSessionNameAndOutputFile()
     {

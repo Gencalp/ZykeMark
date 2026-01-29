@@ -194,10 +194,10 @@ public sealed class PresentMonRunner : IPresentMonRunner
 
     private void ValidateCsvOutput(string csvPath, int exitCode, string stdout, string stderr)
     {
-        // Wait a short time for file system to finish flushing
-        Thread.Sleep(100);
+        // Wait for file system to finish flushing (PresentMon may take time to finalize output)
+        Thread.Sleep(250);
 
-        const int maxRetries = 3;
+        const int maxRetries = 5;
         const int maxLinesToRead = 50;
 
         for (var attempt = 0; attempt < maxRetries; attempt++)
@@ -207,14 +207,16 @@ public sealed class PresentMonRunner : IPresentMonRunner
             {
                 if (attempt < maxRetries - 1)
                 {
-                    Thread.Sleep(100 * (attempt + 1)); // Exponential backoff
+                    var delay = 200 * (attempt + 1); // Exponential backoff: 200ms, 400ms, 600ms, 800ms
+                    Log($"[PresentMon] CSV not found on attempt {attempt + 1}, waiting {delay}ms...");
+                    Thread.Sleep(delay);
                     continue;
                 }
 
                 var baseName = Path.GetFileNameWithoutExtension(csvPath);
                 var multiCsvPattern = $"{baseName}-*.csv";
                 throw new InvalidOperationException(
-                    $"PresentMon did not create output file. Searched for '{csvPath}' and multi_csv pattern '{multiCsvPattern}'. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                    $"PresentMon did not create output file. Searched for '{csvPath}', multi_csv pattern '{multiCsvPattern}', and default pattern 'PresentMon-*.csv'. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
             }
 
             try
@@ -256,23 +258,28 @@ public sealed class PresentMonRunner : IPresentMonRunner
 
                 return; // Success
             }
-            catch (IOException) when (attempt < maxRetries - 1)
+            catch (IOException ex) when (attempt < maxRetries - 1)
             {
-                Thread.Sleep(100 * (attempt + 1)); // Retry on file access issues
+                var delay = 200 * (attempt + 1); // Retry on file access issues
+                Log($"[PresentMon] IOException on attempt {attempt + 1}: {ex.Message}, waiting {delay}ms...");
+                Thread.Sleep(delay);
             }
         }
     }
 
     /// <summary>
-    /// Finds the CSV output file, handling both standard output and multi_csv mode.
-    /// When PresentMon uses --multi_csv, output files are named: {base}-{processname}-{pid}.csv
-    /// (e.g., "presentmon-msedge.exe-9112.csv" for an Edge GPU process)
+    /// Finds the CSV output file, handling both standard output, multi_csv mode, and PresentMon's default naming.
+    /// Search order:
+    /// 1. Exact expected path (e.g., "presentmon.csv")
+    /// 2. Multi_csv pattern: {base}-*.csv (e.g., "presentmon-msedge.exe-9112.csv")
+    /// 3. PresentMon default naming: PresentMon-*.csv (e.g., "PresentMon-2024-01-29T19-55-23.csv")
     /// </summary>
     private string? FindCsvOutputFile(string expectedCsvPath)
     {
         // First, check if the exact file exists (standard mode)
         if (File.Exists(expectedCsvPath))
         {
+            Log($"[PresentMon] Found exact CSV path: {expectedCsvPath}");
             return expectedCsvPath;
         }
 
@@ -287,16 +294,28 @@ public sealed class PresentMonRunner : IPresentMonRunner
 
         if (!Directory.Exists(directory))
         {
+            Log($"[PresentMon] Directory does not exist: {directory}");
             return null;
         }
 
-        // Pattern matches PresentMon's multi_csv naming: {base}-{processname}-{pid}.csv
+        // Log directory contents for debugging
+        try
+        {
+            var allCsvFiles = Directory.GetFiles(directory, "*.csv");
+            Log($"[PresentMon] CSV files in directory: [{string.Join(", ", allCsvFiles.Select(Path.GetFileName))}]");
+        }
+        catch (Exception ex)
+        {
+            Log($"[PresentMon] Error listing directory: {ex.Message}");
+        }
+
+        // Pattern 1: Multi_csv naming: {base}-{processname}-{pid}.csv
         var baseName = Path.GetFileNameWithoutExtension(expectedCsvPath);
-        var pattern = $"{baseName}-*.csv";
+        var multiCsvPattern = $"{baseName}-*.csv";
 
         try
         {
-            var matchingFiles = Directory.GetFiles(directory, pattern);
+            var matchingFiles = Directory.GetFiles(directory, multiCsvPattern);
             if (matchingFiles.Length > 0)
             {
                 // If multiple files exist, return the most recently modified one
@@ -309,9 +328,31 @@ public sealed class PresentMonRunner : IPresentMonRunner
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            Log($"[PresentMon] Error searching for CSV files: {ex.Message}");
+            Log($"[PresentMon] Error searching for multi_csv files: {ex.Message}");
         }
 
+        // Pattern 2: PresentMon default naming: PresentMon-*.csv (when --output_file is ignored)
+        // PresentMon creates files named "PresentMon-<ISO8601-timestamp>.csv" by default
+        const string defaultPattern = "PresentMon-*.csv";
+
+        try
+        {
+            var defaultFiles = Directory.GetFiles(directory, defaultPattern);
+            if (defaultFiles.Length > 0)
+            {
+                var mostRecent = defaultFiles
+                    .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
+                    .First();
+                Log($"[PresentMon] Found default-named output: {mostRecent}");
+                return mostRecent;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            Log($"[PresentMon] Error searching for default-named files: {ex.Message}");
+        }
+
+        Log($"[PresentMon] No CSV files found matching expected patterns in {directory}");
         return null;
     }
 
