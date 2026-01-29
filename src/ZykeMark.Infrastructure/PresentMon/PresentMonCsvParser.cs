@@ -145,4 +145,55 @@ public sealed class PresentMonCsvParser
                 $"PresentMon CSV missing required columns. Need ({acceptedTimestampColumns}) and (MsBetweenPresents or FrameTime). Header columns: [{found}].");
         }
     }
+
+    /// <summary>
+    /// Discovers the CSV header line from a set of lines, skipping preamble lines like
+    /// "Started recording.", "Stopped recording.", or other non-CSV console output.
+    /// A valid header line must contain "Application" and "ProcessID" tokens separated by commas.
+    /// </summary>
+    /// <param name="lines">Lines to search (typically first N lines of a file).</param>
+    /// <param name="headerLineIndex">The zero-based index of the discovered header line.</param>
+    /// <returns>The discovered header line, or null if no valid header was found.</returns>
+    public static string? DiscoverHeaderLine(IEnumerable<string> lines, out int headerLineIndex)
+    {
+        headerLineIndex = -1;
+        var index = 0;
+
+        foreach (var line in lines)
+        {
+            if (IsValidCsvHeaderLine(line))
+            {
+                headerLineIndex = index;
+                return line;
+            }
+
+            index++;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Checks if a line appears to be a valid PresentMon CSV header line.
+    /// A valid header must contain commas and the required "Application" and "ProcessID" columns.
+    /// </summary>
+    public static bool IsValidCsvHeaderLine(string? line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return false;
+        }
+
+        // Must contain commas (CSV format)
+        if (!line.Contains(','))
+        {
+            return false;
+        }
+
+        // Must contain both "Application" and "ProcessID" tokens (case-insensitive)
+        var containsApplication = line.Contains("Application", StringComparison.OrdinalIgnoreCase);
+        var containsProcessId = line.Contains("ProcessID", StringComparison.OrdinalIgnoreCase);
+
+        return containsApplication && containsProcessId;
+    }
 }
