@@ -58,8 +58,10 @@ public sealed class PresentMonCollector : ICollector
 
         // Diagnostics tracking
         var totalDataRows = 0;
+        var totalSkippedRows = 0;
         var firstDataRows = new List<string>();
         var skippedRowDiagnostics = new List<(string Row, ParseFailureReason Reason)>();
+        var skipReasonCounts = new Dictionary<ParseFailureReason, int>();
 
         // Construct run options with session info for file output and unique session name
         var runOptionsWithSession = _runOptions with
@@ -103,6 +105,8 @@ public sealed class PresentMonCollector : ICollector
                 if (!_parser.TryParse(line, out var sample, out var failureReason))
                 {
                     // Track skipped rows for diagnostics
+                    totalSkippedRows++;
+                    skipReasonCounts[failureReason] = skipReasonCounts.GetValueOrDefault(failureReason) + 1;
                     if (skippedRowDiagnostics.Count < MaxSkippedRowsToTrack)
                     {
                         skippedRowDiagnostics.Add((line, failureReason));
@@ -142,7 +146,17 @@ public sealed class PresentMonCollector : ICollector
             FlushChunk(chunkSamples, chunkIndex, chunkStartTimestampMs, finalTimestamp);
         }
 
-        // Log diagnostics if no samples were collected
+        // Always log parsing summary so we can diagnose issues
+        Log($"[Collector] Parsing complete: parsedSamplesCount={samples.Count}, totalDataRows={totalDataRows}, skippedRows={totalSkippedRows}");
+        if (totalSkippedRows > 0)
+        {
+            var reasonCounts = skipReasonCounts
+                .Select(kvp => $"{kvp.Key}={kvp.Value}")
+                .ToArray();
+            Log($"[Collector] Skip reasons: {string.Join(", ", reasonCounts)}");
+        }
+
+        // Log detailed diagnostics if no samples were collected
         if (samples.Count == 0 && totalDataRows > 0)
         {
             LogParsingDiagnostics(totalDataRows, firstDataRows, skippedRowDiagnostics);
