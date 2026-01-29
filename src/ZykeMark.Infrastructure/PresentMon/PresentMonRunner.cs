@@ -200,28 +200,32 @@ public sealed class PresentMonRunner : IPresentMonRunner
         const int maxRetries = 3;
         for (var attempt = 0; attempt < maxRetries; attempt++)
         {
-            if (!File.Exists(csvPath))
+            var actualCsvPath = FindCsvOutputFile(csvPath);
+            if (actualCsvPath is null)
             {
                 if (attempt < maxRetries - 1)
                 {
                     Thread.Sleep(100 * (attempt + 1)); // Exponential backoff
                     continue;
                 }
+
+                var baseName = Path.GetFileNameWithoutExtension(csvPath);
+                var multiCsvPattern = $"{baseName}-*.csv";
                 throw new InvalidOperationException(
-                    $"PresentMon did not create output file '{csvPath}'. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                    $"PresentMon did not create output file. Searched for '{csvPath}' and multi_csv pattern '{multiCsvPattern}'. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
             }
 
             try
             {
-                var lines = File.ReadAllLines(csvPath);
+                var lines = File.ReadAllLines(actualCsvPath);
                 var dataRows = lines.Length > 1 ? lines.Length - 1 : 0; // Subtract header row
 
-                Log($"[PresentMon] CSV output: {csvPath}, {dataRows} data rows");
+                Log($"[PresentMon] CSV output: {actualCsvPath}, {dataRows} data rows");
 
                 if (dataRows == 0)
                 {
                     throw new InvalidOperationException(
-                        $"PresentMon output file '{csvPath}' contains only header (no data rows). Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                        $"PresentMon output file '{actualCsvPath}' contains only header (no data rows). Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
                 }
 
                 return; // Success
@@ -231,6 +235,58 @@ public sealed class PresentMonRunner : IPresentMonRunner
                 Thread.Sleep(100 * (attempt + 1)); // Retry on file access issues
             }
         }
+    }
+
+    /// <summary>
+    /// Finds the CSV output file, handling both standard output and multi_csv mode.
+    /// When PresentMon uses --multi_csv, output files are named: {base}-{processname}-{pid}.csv
+    /// (e.g., "presentmon-msedge.exe-9112.csv" for an Edge GPU process)
+    /// </summary>
+    private string? FindCsvOutputFile(string expectedCsvPath)
+    {
+        // First, check if the exact file exists (standard mode)
+        if (File.Exists(expectedCsvPath))
+        {
+            return expectedCsvPath;
+        }
+
+        // Check for multi_csv output pattern: {base}-{processname}-{pid}.csv
+        var directory = Path.GetDirectoryName(expectedCsvPath);
+
+        // Handle relative paths without directory separator by using current directory
+        if (string.IsNullOrEmpty(directory))
+        {
+            directory = Directory.GetCurrentDirectory();
+        }
+
+        if (!Directory.Exists(directory))
+        {
+            return null;
+        }
+
+        // Pattern matches PresentMon's multi_csv naming: {base}-{processname}-{pid}.csv
+        var baseName = Path.GetFileNameWithoutExtension(expectedCsvPath);
+        var pattern = $"{baseName}-*.csv";
+
+        try
+        {
+            var matchingFiles = Directory.GetFiles(directory, pattern);
+            if (matchingFiles.Length > 0)
+            {
+                // If multiple files exist, return the most recently modified one
+                var mostRecent = matchingFiles
+                    .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
+                    .First();
+                Log($"[PresentMon] Found multi_csv output: {mostRecent}");
+                return mostRecent;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            Log($"[PresentMon] Error searching for CSV files: {ex.Message}");
+        }
+
+        return null;
     }
 
     private void Log(string message)
