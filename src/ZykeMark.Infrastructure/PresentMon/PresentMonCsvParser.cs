@@ -3,9 +3,25 @@ using ZykeMark.Core.Models;
 
 namespace ZykeMark.Infrastructure.PresentMon;
 
+/// <summary>
+/// Reason for why a row could not be parsed.
+/// </summary>
+public enum ParseFailureReason
+{
+    None,
+    EmptyLine,
+    TimestampParseFailed,
+    FrameTimeParseFailed
+}
+
 public sealed class PresentMonCsvParser
 {
     private readonly Dictionary<string, int> _columnIndexes = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets the column names parsed from the header line.
+    /// </summary>
+    public IReadOnlyCollection<string> HeaderColumns => _columnIndexes.Keys;
 
     public void ParseHeader(string headerLine)
     {
@@ -30,10 +46,17 @@ public sealed class PresentMonCsvParser
 
     public bool TryParse(string line, out FrameSample sample)
     {
+        return TryParse(line, out sample, out _);
+    }
+
+    public bool TryParse(string line, out FrameSample sample, out ParseFailureReason failureReason)
+    {
         sample = default!;
+        failureReason = ParseFailureReason.None;
 
         if (string.IsNullOrWhiteSpace(line))
         {
+            failureReason = ParseFailureReason.EmptyLine;
             return false;
         }
 
@@ -47,11 +70,13 @@ public sealed class PresentMonCsvParser
         // Try timestamp columns: CPUStartTime (default), CPUStartQPC, CPUStartQPCTime, CPUStartDateTime, or TimeInSeconds
         if (!TryReadTimestampMs(fields, out var timestampMs))
         {
+            failureReason = ParseFailureReason.TimestampParseFailed;
             return false;
         }
 
         if (!TryReadDouble(fields, new[] { "MsBetweenPresents", "FrameTime" }, out var frameTimeMs))
         {
+            failureReason = ParseFailureReason.FrameTimeParseFailed;
             return false;
         }
 
