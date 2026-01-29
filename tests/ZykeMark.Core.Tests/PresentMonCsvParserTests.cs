@@ -282,6 +282,22 @@ public class PresentMonCsvParserTests
         // Valid line should return None
         Assert.True(parser.TryParse("Game.exe,1234,1000.0,16.67", out _, out reason));
         Assert.Equal(ParseFailureReason.None, reason);
+
+        // Invalid timestamp should return TimestampParseFailed
+        Assert.False(parser.TryParse("Game.exe,1234,invalid,16.67", out _, out reason));
+        Assert.Equal(ParseFailureReason.TimestampParseFailed, reason);
+
+        // Invalid frametime should return FrameTimeParseFailed
+        Assert.False(parser.TryParse("Game.exe,1234,1000.0,invalid", out _, out reason));
+        Assert.Equal(ParseFailureReason.FrameTimeParseFailed, reason);
+
+        // Empty timestamp value should return TimestampParseFailed
+        Assert.False(parser.TryParse("Game.exe,1234,,16.67", out _, out reason));
+        Assert.Equal(ParseFailureReason.TimestampParseFailed, reason);
+
+        // Empty frametime value should return FrameTimeParseFailed
+        Assert.False(parser.TryParse("Game.exe,1234,1000.0,", out _, out reason));
+        Assert.Equal(ParseFailureReason.FrameTimeParseFailed, reason);
     }
 
     [Fact]

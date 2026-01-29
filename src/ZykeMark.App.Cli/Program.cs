@@ -73,7 +73,7 @@ switch (command)
         var buildVersion = GetOptionValue(args, "--build");
 
         var durationSeconds = 15.0;
-        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out durationSeconds))
+        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, NumberStyles.Float, CultureInfo.InvariantCulture, out durationSeconds))
         {
             Console.WriteLine("Invalid value for --seconds.");
             return;
@@ -121,7 +121,7 @@ switch (command)
         var presentMonPath = GetOptionValue(args, "--presentmon-path");
 
         var durationSeconds = 15.0;
-        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out durationSeconds))
+        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, NumberStyles.Float, CultureInfo.InvariantCulture, out durationSeconds))
         {
             Console.WriteLine("Invalid value for --seconds.");
             return;
