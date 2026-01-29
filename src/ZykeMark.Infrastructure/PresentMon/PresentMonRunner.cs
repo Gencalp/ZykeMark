@@ -14,6 +14,241 @@ public sealed class PresentMonRunner : IPresentMonRunner
         _logger = logger;
     }
 
+    /// <inheritdoc />
+    public async Task<PresentMonRunResult> RunToFileAsync(
+        PresentMonRunOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (options is null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        if (options.DurationSeconds <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options.DurationSeconds), "Duration must be positive.");
+        }
+
+        if (string.IsNullOrWhiteSpace(options.ProcessName) && options.ProcessId is null)
+        {
+            throw new ArgumentException("Process name or process ID must be specified.", nameof(options));
+        }
+
+        // Pre-check: Validate that process exists before running PresentMon
+        ValidateProcessExists(options);
+
+        var exePath = ResolveExecutablePath(options.PresentMonPath);
+        var useFileOutput = !string.IsNullOrWhiteSpace(options.SessionFolder) && !string.IsNullOrWhiteSpace(options.SessionId);
+        var csvPath = useFileOutput ? Path.Combine(options.SessionFolder!, "presentmon.csv") : null;
+        var arguments = BuildArguments(options, csvPath);
+        var workingDirectory = useFileOutput ? options.SessionFolder : null;
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = exePath,
+            Arguments = arguments,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        if (!string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            startInfo.WorkingDirectory = workingDirectory;
+        }
+
+        Log($"[PresentMon] Starting: {exePath} {arguments}");
+        Log($"[PresentMon] WorkingDirectory: {workingDirectory ?? "(current)"}");
+
+        using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+        var stderrBuilder = new StringBuilder();
+        var stdoutBuilder = new StringBuilder();
+
+        try
+        {
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("Failed to start PresentMon.");
+            }
+        }
+        catch (Win32Exception ex)
+        {
+            throw new InvalidOperationException(
+                "Failed to start PresentMon. Ensure PresentMon.exe is available and you have permission to run it.",
+                ex);
+        }
+
+        // Capture stderr asynchronously
+        var stderrTask = Task.Run(async () =>
+        {
+            while (!process.StandardError.EndOfStream)
+            {
+                var line = await process.StandardError.ReadLineAsync().ConfigureAwait(false);
+                if (line is not null)
+                {
+                    stderrBuilder.AppendLine(line);
+                    Log($"[PresentMon stderr] {line}");
+                }
+            }
+        }, cancellationToken);
+
+        // Capture stdout asynchronously
+        var stdoutTask = Task.Run(async () =>
+        {
+            while (!process.StandardOutput.EndOfStream)
+            {
+                var line = await process.StandardOutput.ReadLineAsync().ConfigureAwait(false);
+                if (line is not null)
+                {
+                    stdoutBuilder.AppendLine(line);
+                }
+            }
+        }, cancellationToken);
+
+        using var registration = cancellationToken.Register(() =>
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        });
+
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            await Task.WhenAll(stderrTask, stdoutTask).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellation
+        }
+
+        var exitCode = process.ExitCode;
+        var stdout = stdoutBuilder.ToString();
+        var stderr = stderrBuilder.ToString();
+
+        Log($"[PresentMon] Exit code: {exitCode}");
+        Log($"[PresentMon] stdout captured: {stdout.Length} chars");
+        Log($"[PresentMon] stderr captured: {stderr.Length} chars");
+
+        // Discover and validate output file if file mode was used
+        string? actualCsvPath = null;
+        if (useFileOutput && csvPath is not null)
+        {
+            actualCsvPath = DiscoverAndValidateCsvOutput(csvPath, exePath, exitCode, stdout, stderr);
+        }
+
+        return new PresentMonRunResult(actualCsvPath, exitCode, stdout, stderr);
+    }
+
+    /// <summary>
+    /// Discovers the CSV output file and returns its path. Throws if file not found or invalid.
+    /// </summary>
+    private string DiscoverAndValidateCsvOutput(string csvPath, string presentMonExePath, int exitCode, string stdout, string stderr)
+    {
+        // Wait for file system to finish flushing (PresentMon may take time to finalize output)
+        Thread.Sleep(250);
+
+        const int maxRetries = 5;
+        const int maxLinesToRead = 50;
+
+        // Get the directory of the PresentMon executable as a fallback search location
+        var exeDirectory = Path.GetDirectoryName(presentMonExePath);
+
+        for (var attempt = 0; attempt < maxRetries; attempt++)
+        {
+            var actualCsvPath = FindCsvOutputFile(csvPath, exeDirectory);
+            if (actualCsvPath is null)
+            {
+                if (attempt < maxRetries - 1)
+                {
+                    var delay = 200 * (attempt + 1);
+                    Log($"[PresentMon] CSV not found on attempt {attempt + 1}, waiting {delay}ms...");
+                    Thread.Sleep(delay);
+                    continue;
+                }
+
+                var baseName = Path.GetFileNameWithoutExtension(csvPath);
+                var multiCsvPattern = $"{baseName}-*.csv";
+                var expectedDir = Path.GetDirectoryName(csvPath) ?? Directory.GetCurrentDirectory();
+                var searchLocations = string.IsNullOrEmpty(exeDirectory)
+                    ? $"directory '{expectedDir}'"
+                    : $"directories '{expectedDir}' and executable directory '{exeDirectory}'";
+                throw new InvalidOperationException(
+                    $"PresentMon did not create output file. Searched for multi_csv pattern '{multiCsvPattern}' and default pattern 'PresentMon-*.csv' in {searchLocations}. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+            }
+
+            try
+            {
+                Log($"[PresentMon] Selected CSV path: {actualCsvPath}");
+
+                // If the file was found in a different directory, copy it to the expected location
+                var expectedDirectory = Path.GetDirectoryName(csvPath);
+                var actualDirectory = Path.GetDirectoryName(actualCsvPath);
+                if (!string.IsNullOrEmpty(expectedDirectory) &&
+                    !string.IsNullOrEmpty(actualDirectory) &&
+                    !string.Equals(expectedDirectory, actualDirectory, StringComparison.OrdinalIgnoreCase))
+                {
+                    var targetPath = Path.Combine(expectedDirectory, Path.GetFileName(actualCsvPath));
+                    Log($"[PresentMon] Copying CSV from '{actualCsvPath}' to '{targetPath}'");
+                    File.Copy(actualCsvPath, targetPath, overwrite: true);
+                    actualCsvPath = targetPath;
+                }
+
+                var lines = File.ReadAllLines(actualCsvPath);
+
+                // Log first 3 lines for debugging
+                var previewLines = lines.Take(3).ToArray();
+                for (var i = 0; i < previewLines.Length; i++)
+                {
+                    Log($"[PresentMon] CSV line {i}: {previewLines[i]}");
+                }
+
+                // Discover the actual CSV header (skip preamble like "Started recording.")
+                var headerLine = PresentMonCsvParser.DiscoverHeaderLine(lines.Take(maxLinesToRead), out var headerLineIndex);
+
+                if (headerLine is null)
+                {
+                    var firstLines = string.Join(Environment.NewLine, lines.Take(5));
+                    throw new InvalidOperationException(
+                        $"PresentMon output file '{actualCsvPath}' does not contain a valid CSV header. " +
+                        $"Expected header with 'Application,ProcessID,...'. First lines:\n{firstLines}\n" +
+                        $"Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                }
+
+                Log($"[PresentMon] CSV header found at line {headerLineIndex}: {headerLine}");
+
+                // Count data rows (lines after the header)
+                var dataRows = lines.Length - headerLineIndex - 1;
+                Log($"[PresentMon] CSV output: {actualCsvPath}, {dataRows} data rows (header at line {headerLineIndex})");
+
+                if (dataRows <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"PresentMon output file '{actualCsvPath}' contains only header (no data rows). Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                }
+
+                return actualCsvPath; // Success - return the discovered path
+            }
+            catch (IOException ex) when (attempt < maxRetries - 1)
+            {
+                var delay = 200 * (attempt + 1);
+                Log($"[PresentMon] IOException on attempt {attempt + 1}: {ex.Message}, waiting {delay}ms...");
+                Thread.Sleep(delay);
+            }
+        }
+
+        throw new InvalidOperationException($"Failed to discover CSV output file after retries. Expected path: {csvPath}");
+    }
+
     public async IAsyncEnumerable<string> RunAsync(
         PresentMonRunOptions options,
         [EnumeratorCancellation] CancellationToken cancellationToken)
