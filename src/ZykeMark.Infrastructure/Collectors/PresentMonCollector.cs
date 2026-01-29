@@ -11,6 +11,7 @@ public sealed class PresentMonCollector : ICollector
 
     private readonly ILocalStore _localStore;
     private readonly string _sessionId;
+    private readonly string? _sessionFolder;
     private readonly DateTime _sessionStartUtc;
     private readonly IPresentMonRunner _runner;
     private readonly PresentMonCsvParser _parser;
@@ -22,12 +23,14 @@ public sealed class PresentMonCollector : ICollector
         DateTime sessionStartUtc,
         IPresentMonRunner runner,
         PresentMonCsvParser parser,
-        PresentMonRunOptions runOptions)
+        PresentMonRunOptions runOptions,
+        string? sessionFolder = null)
     {
         _localStore = localStore ?? throw new ArgumentNullException(nameof(localStore));
         _sessionId = string.IsNullOrWhiteSpace(sessionId)
             ? throw new ArgumentException("Session ID is required.", nameof(sessionId))
             : sessionId;
+        _sessionFolder = sessionFolder;
         _sessionStartUtc = sessionStartUtc;
         _runner = runner ?? throw new ArgumentNullException(nameof(runner));
         _parser = parser ?? throw new ArgumentNullException(nameof(parser));
@@ -48,8 +51,16 @@ public sealed class PresentMonCollector : ICollector
         var firstDataTimestampMs = (double?)null;
         var headerParsed = false;
 
-        using var cts = new CancellationTokenSource(duration);
-        var lines = _runner.RunAsync(_runOptions with { DurationSeconds = (int)Math.Ceiling(duration.TotalSeconds) }, cts.Token)
+        // Construct run options with session info for file output and unique session name
+        var runOptionsWithSession = _runOptions with
+        {
+            DurationSeconds = (int)Math.Ceiling(duration.TotalSeconds),
+            SessionId = _sessionId,
+            SessionFolder = _sessionFolder
+        };
+
+        using var cts = new CancellationTokenSource(duration + TimeSpan.FromSeconds(5)); // Add buffer for process cleanup
+        var lines = _runner.RunAsync(runOptionsWithSession, cts.Token)
             .GetAsyncEnumerator(cts.Token);
 
         try
