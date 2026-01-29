@@ -1,3 +1,4 @@
+using System.Globalization;
 using ZykeMark.Infrastructure.PresentMon;
 using Xunit;
 
@@ -178,5 +179,124 @@ public class PresentMonCsvParserTests
         Assert.True(samples.Count >= 5, $"Expected at least 5 samples, got {samples.Count}");
         Assert.All(samples, sample => Assert.True(sample.FrameTimeMs > 0));
         Assert.All(samples, sample => Assert.True(sample.TimestampMs > 0));
+    }
+
+    [Fact]
+    public void Parser_ParsesCorrectly_UnderTurkishLocale()
+    {
+        // Regression test: Parsing must work under tr-TR culture which uses comma as decimal separator
+        // PresentMon CSV always uses dot-decimals (e.g., "3222.5969"), but on Turkish locale
+        // the parser previously used CurrentCulture which caused all rows to fail parsing.
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUICulture = CultureInfo.CurrentUICulture;
+
+        try
+        {
+            // Set Turkish culture which uses comma as decimal separator
+            var turkishCulture = new CultureInfo("tr-TR");
+            CultureInfo.CurrentCulture = turkishCulture;
+            CultureInfo.CurrentUICulture = turkishCulture;
+
+            // Verify the Turkish culture uses comma as decimal separator
+            Assert.Equal(",", turkishCulture.NumberFormat.NumberDecimalSeparator);
+
+            var parser = new PresentMonCsvParser();
+            parser.ParseHeader("Application,ProcessID,CPUStartTime,FrameTime");
+
+            // Test parsing with dot-decimal values (as PresentMon outputs)
+            Assert.True(parser.TryParse("Game.exe,1234,3222.5969,16.67", out var sample),
+                "Parser should successfully parse dot-decimal values under tr-TR culture");
+            Assert.Equal(3222.5969, sample.TimestampMs, precision: 4);
+            Assert.Equal(16.67, sample.FrameTimeMs, precision: 2);
+
+            // Test with more typical values
+            Assert.True(parser.TryParse("Game.exe,1234,1000.0,33.34", out sample),
+                "Parser should successfully parse dot-decimal values under tr-TR culture");
+            Assert.Equal(1000.0, sample.TimestampMs, precision: 2);
+            Assert.Equal(33.34, sample.FrameTimeMs, precision: 2);
+
+            // Test with CPUBusy and GPUTime optional columns
+            parser.ParseHeader("Application,ProcessID,CPUStartTime,FrameTime,CPUBusy,GPUTime");
+            Assert.True(parser.TryParse("Game.exe,1234,5000.123,16.67,5.2,6.1", out sample));
+            Assert.Equal(5000.123, sample.TimestampMs, precision: 3);
+            Assert.Equal(16.67, sample.FrameTimeMs, precision: 2);
+            Assert.NotNull(sample.CpuFrameTimeMs);
+            Assert.NotNull(sample.GpuFrameTimeMs);
+            Assert.Equal(5.2, sample.CpuFrameTimeMs!.Value, precision: 1);
+            Assert.Equal(6.1, sample.GpuFrameTimeMs!.Value, precision: 1);
+        }
+        finally
+        {
+            // Restore original culture
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUICulture;
+        }
+    }
+
+    [Fact]
+    public void Parser_ParsesCorrectly_WithVariousLocales()
+    {
+        // Test parsing works correctly under multiple locales that have different decimal separators
+        var testCultures = new[] { "de-DE", "fr-FR", "es-ES", "pt-BR", "ru-RU", "ar-SA", "zh-CN", "ja-JP" };
+
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUICulture = CultureInfo.CurrentUICulture;
+
+        foreach (var cultureName in testCultures)
+        {
+            try
+            {
+                var culture = new CultureInfo(cultureName);
+                CultureInfo.CurrentCulture = culture;
+                CultureInfo.CurrentUICulture = culture;
+
+                var parser = new PresentMonCsvParser();
+                parser.ParseHeader("Application,ProcessID,CPUStartTime,FrameTime");
+
+                Assert.True(parser.TryParse("Game.exe,1234,3222.5969,16.67", out var sample),
+                    $"Parser should parse successfully under {cultureName} culture");
+                Assert.Equal(3222.5969, sample.TimestampMs, precision: 4);
+                Assert.Equal(16.67, sample.FrameTimeMs, precision: 2);
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = originalCulture;
+                CultureInfo.CurrentUICulture = originalUICulture;
+            }
+        }
+    }
+
+    [Fact]
+    public void Parser_ReturnsCorrectFailureReason()
+    {
+        var parser = new PresentMonCsvParser();
+        parser.ParseHeader("Application,ProcessID,CPUStartTime,FrameTime");
+
+        // Empty line should return EmptyLine reason
+        Assert.False(parser.TryParse("", out _, out var reason));
+        Assert.Equal(ParseFailureReason.EmptyLine, reason);
+
+        Assert.False(parser.TryParse("   ", out _, out reason));
+        Assert.Equal(ParseFailureReason.EmptyLine, reason);
+
+        // Valid line should return None
+        Assert.True(parser.TryParse("Game.exe,1234,1000.0,16.67", out _, out reason));
+        Assert.Equal(ParseFailureReason.None, reason);
+    }
+
+    [Fact]
+    public void Parser_HeaderColumnsProperty_ReturnsColumnNames()
+    {
+        var parser = new PresentMonCsvParser();
+        parser.ParseHeader("Application,ProcessID,CPUStartTime,FrameTime,CPUBusy");
+
+        var headers = parser.HeaderColumns;
+        Assert.NotNull(headers);
+        Assert.Equal(5, headers.Count);
+        Assert.Contains("Application", headers, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ProcessID", headers, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("CPUStartTime", headers, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("FrameTime", headers, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("CPUBusy", headers, StringComparer.OrdinalIgnoreCase);
     }
 }

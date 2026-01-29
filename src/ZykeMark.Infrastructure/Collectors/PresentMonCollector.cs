@@ -8,6 +8,8 @@ public sealed class PresentMonCollector : ICollector
 {
     private const double ChunkDurationMs = 5000;
     private const int ChunkMaxFrames = 10_000;
+    private const int MaxSkippedRowsToTrack = 10;
+    private const int MaxDataRowsToTrack = 3;
 
     private readonly ILocalStore _localStore;
     private readonly string _sessionId;
@@ -16,6 +18,7 @@ public sealed class PresentMonCollector : ICollector
     private readonly IPresentMonRunner _runner;
     private readonly PresentMonCsvParser _parser;
     private readonly PresentMonRunOptions _runOptions;
+    private readonly Action<string>? _logger;
 
     public PresentMonCollector(
         ILocalStore localStore,
@@ -24,7 +27,8 @@ public sealed class PresentMonCollector : ICollector
         IPresentMonRunner runner,
         PresentMonCsvParser parser,
         PresentMonRunOptions runOptions,
-        string? sessionFolder = null)
+        string? sessionFolder = null,
+        Action<string>? logger = null)
     {
         _localStore = localStore ?? throw new ArgumentNullException(nameof(localStore));
         _sessionId = string.IsNullOrWhiteSpace(sessionId)
@@ -35,6 +39,7 @@ public sealed class PresentMonCollector : ICollector
         _runner = runner ?? throw new ArgumentNullException(nameof(runner));
         _parser = parser ?? throw new ArgumentNullException(nameof(parser));
         _runOptions = runOptions ?? throw new ArgumentNullException(nameof(runOptions));
+        _logger = logger;
     }
 
     public IReadOnlyList<FrameSample> Collect(TimeSpan duration)
@@ -50,6 +55,11 @@ public sealed class PresentMonCollector : ICollector
         var chunkIndex = 1;
         var firstDataTimestampMs = (double?)null;
         var headerParsed = false;
+
+        // Diagnostics tracking
+        var totalDataRows = 0;
+        var firstDataRows = new List<string>();
+        var skippedRowDiagnostics = new List<(string Row, ParseFailureReason Reason)>();
 
         // Construct run options with session info for file output and unique session name
         var runOptionsWithSession = _runOptions with
@@ -83,8 +93,20 @@ public sealed class PresentMonCollector : ICollector
                     continue;
                 }
 
-                if (!_parser.TryParse(line, out var sample))
+                // Track data rows for diagnostics
+                totalDataRows++;
+                if (firstDataRows.Count < MaxDataRowsToTrack)
                 {
+                    firstDataRows.Add(line);
+                }
+
+                if (!_parser.TryParse(line, out var sample, out var failureReason))
+                {
+                    // Track skipped rows for diagnostics
+                    if (skippedRowDiagnostics.Count < MaxSkippedRowsToTrack)
+                    {
+                        skippedRowDiagnostics.Add((line, failureReason));
+                    }
                     continue;
                 }
 
@@ -120,7 +142,49 @@ public sealed class PresentMonCollector : ICollector
             FlushChunk(chunkSamples, chunkIndex, chunkStartTimestampMs, finalTimestamp);
         }
 
+        // Log diagnostics if no samples were collected
+        if (samples.Count == 0 && totalDataRows > 0)
+        {
+            LogParsingDiagnostics(totalDataRows, firstDataRows, skippedRowDiagnostics);
+        }
+
         return samples;
+    }
+
+    private void LogParsingDiagnostics(
+        int totalDataRows,
+        List<string> firstDataRows,
+        List<(string Row, ParseFailureReason Reason)> skippedRowDiagnostics)
+    {
+        Log("[Collector] WARNING: 0 samples parsed from PresentMon CSV data.");
+        Log($"[Collector] Header columns: [{string.Join(", ", _parser.HeaderColumns)}]");
+        Log($"[Collector] Total data rows: {totalDataRows}");
+
+        if (firstDataRows.Count > 0)
+        {
+            Log("[Collector] First data rows:");
+            for (var i = 0; i < firstDataRows.Count; i++)
+            {
+                Log($"[Collector]   Row {i + 1}: {firstDataRows[i]}");
+            }
+        }
+
+        if (skippedRowDiagnostics.Count > 0)
+        {
+            Log($"[Collector] First {skippedRowDiagnostics.Count} skipped rows and reasons:");
+            foreach (var (row, reason) in skippedRowDiagnostics)
+            {
+                Log($"[Collector]   Reason: {reason}");
+                Log($"[Collector]     Row: {row}");
+            }
+        }
+
+        Log("[Collector] Possible causes: numeric parsing failed due to locale mismatch (e.g., comma vs dot decimal separator), delimiter mismatch, or missing required columns.");
+    }
+
+    private void Log(string message)
+    {
+        _logger?.Invoke(message);
     }
 
     private void FlushChunk(List<FrameSample> samples, int chunkIndex, double chunkStartTimestampMs, double chunkEndTimestampMs)

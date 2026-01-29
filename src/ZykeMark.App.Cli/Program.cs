@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using ZykeMark.App.Cli.Collectors;
 using ZykeMark.Core.Models;
@@ -72,14 +73,14 @@ switch (command)
         var buildVersion = GetOptionValue(args, "--build");
 
         var durationSeconds = 15.0;
-        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, out durationSeconds))
+        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out durationSeconds))
         {
             Console.WriteLine("Invalid value for --seconds.");
             return;
         }
 
         var seed = 123;
-        if (!string.IsNullOrWhiteSpace(seedValue) && !int.TryParse(seedValue, out seed))
+        if (!string.IsNullOrWhiteSpace(seedValue) && !int.TryParse(seedValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out seed))
         {
             Console.WriteLine("Invalid value for --seed.");
             return;
@@ -120,7 +121,7 @@ switch (command)
         var presentMonPath = GetOptionValue(args, "--presentmon-path");
 
         var durationSeconds = 15.0;
-        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, out durationSeconds))
+        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out durationSeconds))
         {
             Console.WriteLine("Invalid value for --seconds.");
             return;
@@ -129,7 +130,7 @@ switch (command)
         int? processId = null;
         if (!string.IsNullOrWhiteSpace(processIdValue))
         {
-            if (!int.TryParse(processIdValue, out var parsedProcessId))
+            if (!int.TryParse(processIdValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedProcessId))
             {
                 Console.WriteLine("Invalid value for --process_id.");
                 return;
@@ -162,7 +163,8 @@ switch (command)
             new PresentMonRunner(Log),
             new PresentMonCsvParser(),
             runOptions,
-            sessionFolder);
+            sessionFolder,
+            Log);
 
         try
         {
