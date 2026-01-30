@@ -112,16 +112,29 @@
                                        Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
                         </StackPanel>
                     </Grid>
-                    <Grid>
+                    <Grid Margin="0,0,0,12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <ui:TextBox Grid.Column="0" PlaceholderText="C:\Path\To\PresentMon.exe"
                                     Text="{Binding PresentMonPath, UpdateSourceTrigger=PropertyChanged}"/>
                         <ui:Button Grid.Column="1" Content="Browse" Icon="{ui:SymbolIcon FolderOpen24}" 
                                    Margin="8,0,0,0" Command="{Binding BrowsePresentMonPathCommand}"/>
+                        <ui:Button Grid.Column="2" Content="Validate" Icon="{ui:SymbolIcon CheckmarkCircle24}" 
+                                   Margin="8,0,0,0" Command="{Binding ValidatePresentMonPathCommand}"
+                                   Appearance="Secondary"/>
                     </Grid>
+                    <Border Background="{StaticResource ZykeSurfaceAltBrush}" CornerRadius="4" Padding="12,8"
+                            Visibility="{Binding ShowPresentMonValidation, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="{Binding PresentMonValidationIcon}" FontSize="16" 
+                                           Foreground="{Binding PresentMonValidationBrush}" Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding PresentMonValidationMessage}" FontSize="12"
+                                       Foreground="{Binding PresentMonValidationBrush}"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ui:Card>
 

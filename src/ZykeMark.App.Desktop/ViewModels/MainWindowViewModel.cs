@@ -58,6 +58,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         CopyErrorCommand = new RelayCommand(CopyErrorDetails, () => !string.IsNullOrWhiteSpace(LastError));
         RefreshSessionsCommand = new RelayCommand(RefreshSessions, () => true);
         BrowsePresentMonPathCommand = new RelayCommand(BrowsePresentMonPath, () => true);
+        ValidatePresentMonPathCommand = new RelayCommand(ValidatePresentMonPath, () => true);
         OpenSelectedSessionFolderCommand = new RelayCommand(OpenSelectedSessionFolder, () => SelectedSession is not null);
         OpenSelectedSessionReportCommand = new RelayCommand(OpenSelectedSessionReport, () => SelectedSession?.HasReport == true);
 
@@ -81,6 +82,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public RelayCommand CopyErrorCommand { get; }
     public RelayCommand RefreshSessionsCommand { get; }
     public RelayCommand BrowsePresentMonPathCommand { get; }
+    public RelayCommand ValidatePresentMonPathCommand { get; }
     public RelayCommand OpenSelectedSessionFolderCommand { get; }
     public RelayCommand OpenSelectedSessionReportCommand { get; }
 
@@ -212,6 +214,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string DataQualityEtwRisk { get; private set; } = "None";
     public string DataQualityOutlierRisk { get; private set; } = "Low";
     public string DataQualityWarnings { get; private set; } = "None";
+
+    // Last Session Summary for Dashboard
+    public string LastSessionGameName { get; private set; } = "N/A";
+    public string LastSessionDate { get; private set; } = "N/A";
+    public string LastSessionAvgFps { get; private set; } = "N/A";
+    public string LastSessionP99 { get; private set; } = "N/A";
+
+    // PresentMon Validation
+    public bool ShowPresentMonValidation { get; private set; }
+    public string PresentMonValidationMessage { get; private set; } = string.Empty;
+    public Brush PresentMonValidationBrush { get; private set; } = SuccessBrush;
+    public Wpf.Ui.Controls.SymbolRegular PresentMonValidationIcon { get; private set; } = Wpf.Ui.Controls.SymbolRegular.CheckmarkCircle24;
 
     private SessionState State
     {
@@ -373,6 +387,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 Sessions.Add(session);
             }
 
+            // Update last session summary for Dashboard
+            UpdateLastSessionSummary();
+
             OnPropertyChanged(nameof(HasNoSessions));
             OnPropertyChanged(nameof(HasSessions));
             StatusMessage = Sessions.Count > 0
@@ -383,6 +400,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             HandleError("Failed to refresh sessions.", ex);
         }
+    }
+
+    private void UpdateLastSessionSummary()
+    {
+        if (Sessions.Count == 0)
+        {
+            LastSessionGameName = "N/A";
+            LastSessionDate = "N/A";
+            LastSessionAvgFps = "N/A";
+            LastSessionP99 = "N/A";
+        }
+        else
+        {
+            var lastSession = Sessions.First(); // Already sorted by date descending
+            LastSessionGameName = lastSession.GameName;
+            LastSessionDate = lastSession.StartDateDisplay;
+            LastSessionAvgFps = lastSession.AvgFpsDisplay;
+            LastSessionP99 = lastSession.P99Display;
+        }
+
+        OnPropertyChanged(nameof(LastSessionGameName));
+        OnPropertyChanged(nameof(LastSessionDate));
+        OnPropertyChanged(nameof(LastSessionAvgFps));
+        OnPropertyChanged(nameof(LastSessionP99));
     }
 
     private void FilterSessions()
@@ -472,7 +513,51 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         if (dialog.ShowDialog() == true)
         {
             PresentMonPath = dialog.FileName;
+            // Hide validation message when path changes
+            ShowPresentMonValidation = false;
+            OnPropertyChanged(nameof(ShowPresentMonValidation));
         }
+    }
+
+    private void ValidatePresentMonPath()
+    {
+        ShowPresentMonValidation = true;
+
+        if (string.IsNullOrWhiteSpace(PresentMonPath))
+        {
+            PresentMonValidationMessage = "Path is empty. Auto-detect will be used.";
+            PresentMonValidationBrush = NeutralBrush;
+            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.Info24;
+        }
+        else if (!System.IO.File.Exists(PresentMonPath))
+        {
+            PresentMonValidationMessage = "File not found. Please check the path.";
+            PresentMonValidationBrush = ErrorBrush;
+            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.ErrorCircle24;
+        }
+        else if (!PresentMonPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            PresentMonValidationMessage = "File is not an executable.";
+            PresentMonValidationBrush = ErrorBrush;
+            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.ErrorCircle24;
+        }
+        else if (!PresentMonPath.Contains("PresentMon", StringComparison.OrdinalIgnoreCase))
+        {
+            PresentMonValidationMessage = "Warning: File name doesn't contain 'PresentMon'. Make sure this is the correct executable.";
+            PresentMonValidationBrush = NeutralBrush;
+            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.Warning24;
+        }
+        else
+        {
+            PresentMonValidationMessage = "Valid PresentMon executable found.";
+            PresentMonValidationBrush = SuccessBrush;
+            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.CheckmarkCircle24;
+        }
+
+        OnPropertyChanged(nameof(ShowPresentMonValidation));
+        OnPropertyChanged(nameof(PresentMonValidationMessage));
+        OnPropertyChanged(nameof(PresentMonValidationBrush));
+        OnPropertyChanged(nameof(PresentMonValidationIcon));
     }
 
     private void OnChunkReceived(object? sender, RawSampleChunk chunk)
