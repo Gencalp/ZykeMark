@@ -7,6 +7,7 @@ namespace ZykeMark.App.Desktop;
 public partial class MainWindow : FluentWindow
 {
     private readonly MainWindowViewModel _viewModel;
+    private Button? _activeNavButton;
 
     public MainWindow()
     {
@@ -20,17 +21,34 @@ public partial class MainWindow : FluentWindow
     private void MainWindow_Loaded(object sender, System.Windows.RoutedEventArgs e)
     {
         // Navigate to Dashboard by default
-        NavigateTo<DashboardPage>();
+        NavigateTo<DashboardPage>(NavDashboard);
     }
 
-    private void NavigateTo<T>() where T : System.Windows.Controls.Page, new()
+    private void NavigateTo<T>(Button navButton) where T : System.Windows.Controls.Page, new()
     {
         var page = new T { DataContext = _viewModel };
         ContentFrame.Navigate(page);
+        UpdateActiveNavButton(navButton);
     }
 
-    private void NavDashboard_Click(object sender, System.Windows.RoutedEventArgs e) => NavigateTo<DashboardPage>();
-    private void NavLiveSession_Click(object sender, System.Windows.RoutedEventArgs e) => NavigateTo<LiveSessionPage>();
-    private void NavSessions_Click(object sender, System.Windows.RoutedEventArgs e) => NavigateTo<SessionsPage>();
-    private void NavSettings_Click(object sender, System.Windows.RoutedEventArgs e) => NavigateTo<SettingsPage>();
+    private void UpdateActiveNavButton(Button newActiveButton)
+    {
+        // Reset previous active button
+        if (_activeNavButton is not null)
+        {
+            _activeNavButton.Appearance = Wpf.Ui.Controls.ControlAppearance.Secondary;
+        }
+
+        // Set new active button
+        _activeNavButton = newActiveButton;
+        if (_activeNavButton is not null)
+        {
+            _activeNavButton.Appearance = Wpf.Ui.Controls.ControlAppearance.Primary;
+        }
+    }
+
+    private void NavDashboard_Click(object sender, System.Windows.RoutedEventArgs e) => NavigateTo<DashboardPage>(NavDashboard);
+    private void NavLiveSession_Click(object sender, System.Windows.RoutedEventArgs e) => NavigateTo<LiveSessionPage>(NavLiveSession);
+    private void NavSessions_Click(object sender, System.Windows.RoutedEventArgs e) => NavigateTo<SessionsPage>(NavSessions);
+    private void NavSettings_Click(object sender, System.Windows.RoutedEventArgs e) => NavigateTo<SettingsPage>(NavSettings);
 }

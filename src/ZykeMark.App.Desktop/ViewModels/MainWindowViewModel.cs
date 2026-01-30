@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
@@ -20,6 +22,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private static readonly SolidColorBrush NeutralBrush = new(Color.FromRgb(61, 61, 61));
 
     private readonly SessionOrchestrationService _service;
+    private readonly SessionDiscoveryService _discoveryService;
     private readonly DispatcherTimer _durationTimer;
     private readonly List<FrameSample> _samples = new();
     private SessionMetadata? _metadata;
@@ -31,17 +34,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _buildVersion = string.Empty;
     private string _presentMonPath = string.Empty;
     private string _sessionSearchQuery = string.Empty;
+    private SessionListItem? _selectedSession;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public MainWindowViewModel()
     {
         _service = new SessionOrchestrationService();
+        _discoveryService = new SessionDiscoveryService();
         _service.ChunkReceived += OnChunkReceived;
         _service.Error += OnServiceError;
 
         _durationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _durationTimer.Tick += (_, _) => UpdateDuration();
+
+        Sessions = new ObservableCollection<SessionListItem>();
 
         StartCommand = new RelayCommand(StartSession, () => State is SessionState.Idle or SessionState.Completed or SessionState.Error);
         EndCommand = new RelayCommand(EndSession, () => State == SessionState.Running);
@@ -51,6 +58,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         CopyErrorCommand = new RelayCommand(CopyErrorDetails, () => !string.IsNullOrWhiteSpace(LastError));
         RefreshSessionsCommand = new RelayCommand(RefreshSessions, () => true);
         BrowsePresentMonPathCommand = new RelayCommand(BrowsePresentMonPath, () => true);
+        OpenSelectedSessionFolderCommand = new RelayCommand(OpenSelectedSessionFolder, () => SelectedSession is not null);
+        OpenSelectedSessionReportCommand = new RelayCommand(OpenSelectedSessionReport, () => SelectedSession?.HasReport == true);
 
         StatusText = "Idle";
         DurationText = "00:00:00";
@@ -59,6 +68,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         DataQualityEtwRisk = "None";
         DataQualityOutlierRisk = "Low";
         DataQualityWarnings = "None";
+
+        // Initial session discovery
+        RefreshSessions();
     }
 
     public RelayCommand StartCommand { get; }
@@ -69,6 +81,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public RelayCommand CopyErrorCommand { get; }
     public RelayCommand RefreshSessionsCommand { get; }
     public RelayCommand BrowsePresentMonPathCommand { get; }
+    public RelayCommand OpenSelectedSessionFolderCommand { get; }
+    public RelayCommand OpenSelectedSessionReportCommand { get; }
+
+    public ObservableCollection<SessionListItem> Sessions { get; }
+
+    public SessionListItem? SelectedSession
+    {
+        get => _selectedSession;
+        set
+        {
+            if (SetField(ref _selectedSession, value))
+            {
+                OpenSelectedSessionFolderCommand.RaiseCanExecuteChanged();
+                OpenSelectedSessionReportCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
 
     public string StatusText { get; private set; } = string.Empty;
     public string DurationText { get; private set; } = string.Empty;
@@ -118,15 +147,38 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string SessionSearchQuery
     {
         get => _sessionSearchQuery;
-        set => SetField(ref _sessionSearchQuery, value);
+        set
+        {
+            if (SetField(ref _sessionSearchQuery, value))
+            {
+                FilterSessions();
+            }
+        }
     }
 
     // Session status properties for UI
     public bool IsSessionRunning => State == SessionState.Running;
     public bool HasError => !string.IsNullOrWhiteSpace(LastError);
     public bool ShowStatusBanner => !string.IsNullOrWhiteSpace(StatusMessage);
-    public bool HasNoSessions => true; // TODO: Populate from session list service
+    public bool HasNoSessions => Sessions.Count == 0;
     public bool HasSessions => !HasNoSessions;
+
+    // Dynamic tooltips for disabled state explanation
+    public string StartButtonTooltip => State == SessionState.Running
+        ? "A session is already running. Stop it first."
+        : "Start Capture (Ctrl+Enter)";
+
+    public string StopButtonTooltip => State != SessionState.Running
+        ? "No session is currently running."
+        : "Stop Capture (Ctrl+Enter)";
+
+    public string ExportPdfTooltip => string.IsNullOrWhiteSpace(SessionFolder)
+        ? "Complete a session first to export a PDF report."
+        : "Export PDF Report (Ctrl+E)";
+
+    public string OpenFolderTooltip => string.IsNullOrWhiteSpace(SessionFolder)
+        ? "Complete a session first to open the session folder."
+        : "Open Session Folder";
 
     // Status banner styling (using cached brushes)
     public Brush StatusBannerBackground => State == SessionState.Error ? ErrorBrush : SuccessBrush;
@@ -177,6 +229,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(IsSessionRunning));
                 OnPropertyChanged(nameof(SessionStateBadgeBackground));
                 OnPropertyChanged(nameof(StatusBannerBackground));
+                OnPropertyChanged(nameof(StartButtonTooltip));
+                OnPropertyChanged(nameof(StopButtonTooltip));
+                OnPropertyChanged(nameof(ExportPdfTooltip));
+                OnPropertyChanged(nameof(OpenFolderTooltip));
             }
         }
     }
@@ -222,11 +278,52 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             UpdateDuration();
             State = SessionState.Completed;
             StatusMessage = "Session ended.";
+
+            // Update data quality from the saved summary
+            UpdateDataQualityFromSummary();
+
+            // Refresh sessions list to include the new session
+            RefreshSessions();
         }
         catch (Exception ex)
         {
             HandleError("Failed to stop session.", ex);
             State = SessionState.Error;
+        }
+    }
+
+    private void UpdateDataQualityFromSummary()
+    {
+        if (string.IsNullOrWhiteSpace(SessionFolder))
+        {
+            return;
+        }
+
+        try
+        {
+            var summary = _discoveryService.LoadSessionSummary(SessionFolder);
+            if (summary?.DataQuality is not null)
+            {
+                DataQualityEtwRisk = summary.DataQuality.EtwEventsLostRiskLevel ?? "None";
+                DataQualityWarnings = summary.DataQuality.CaptureWarnings?.Count > 0
+                    ? string.Join(", ", summary.DataQuality.CaptureWarnings)
+                    : "None";
+
+                // Calculate outlier risk based on worst frame time
+                if (summary.Aggregates is not null)
+                {
+                    var worstFrameTime = _samples.Count > 0 ? _samples.Max(s => s.FrameTimeMs) : 0;
+                    DataQualityOutlierRisk = worstFrameTime > 1000 ? "High" : worstFrameTime > 500 ? "Moderate" : "Low";
+                }
+
+                OnPropertyChanged(nameof(DataQualityEtwRisk));
+                OnPropertyChanged(nameof(DataQualityOutlierRisk));
+                OnPropertyChanged(nameof(DataQualityWarnings));
+            }
+        }
+        catch
+        {
+            // Ignore errors reading summary
         }
     }
 
@@ -266,7 +363,102 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void RefreshSessions()
     {
-        StatusMessage = "Sessions refreshed.";
+        try
+        {
+            var discoveredSessions = _discoveryService.DiscoverSessions();
+            Sessions.Clear();
+
+            foreach (var session in discoveredSessions)
+            {
+                Sessions.Add(session);
+            }
+
+            OnPropertyChanged(nameof(HasNoSessions));
+            OnPropertyChanged(nameof(HasSessions));
+            StatusMessage = Sessions.Count > 0
+                ? $"Found {Sessions.Count} session(s)."
+                : "No sessions found.";
+        }
+        catch (Exception ex)
+        {
+            HandleError("Failed to refresh sessions.", ex);
+        }
+    }
+
+    private void FilterSessions()
+    {
+        // Re-discover and filter by search query
+        try
+        {
+            var discoveredSessions = _discoveryService.DiscoverSessions();
+            Sessions.Clear();
+
+            var query = SessionSearchQuery?.Trim().ToLowerInvariant();
+            var filtered = string.IsNullOrEmpty(query)
+                ? discoveredSessions
+                : discoveredSessions.Where(s =>
+                    (s.GameName?.ToLowerInvariant().Contains(query) == true) ||
+                    (s.BuildVersion?.ToLowerInvariant().Contains(query) == true) ||
+                    (s.SessionId?.ToLowerInvariant().Contains(query) == true));
+
+            foreach (var session in filtered)
+            {
+                Sessions.Add(session);
+            }
+
+            OnPropertyChanged(nameof(HasNoSessions));
+            OnPropertyChanged(nameof(HasSessions));
+        }
+        catch
+        {
+            // Ignore filter errors
+        }
+    }
+
+    private void OpenSelectedSessionFolder()
+    {
+        if (SelectedSession is null)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = SelectedSession.SessionFolder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            HandleError("Failed to open session folder.", ex);
+        }
+    }
+
+    private void OpenSelectedSessionReport()
+    {
+        if (SelectedSession is null || !SelectedSession.HasReport)
+        {
+            return;
+        }
+
+        try
+        {
+            var reportPath = System.IO.Path.Combine(SelectedSession.SessionFolder, "report.pdf");
+            if (System.IO.File.Exists(reportPath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = reportPath,
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleError("Failed to open report.", ex);
+        }
     }
 
     private void BrowsePresentMonPath()
