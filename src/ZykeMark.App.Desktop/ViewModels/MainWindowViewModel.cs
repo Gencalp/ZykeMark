@@ -13,6 +13,12 @@ namespace ZykeMark.App.Desktop.ViewModels;
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged
 {
+    // Cached brushes for performance
+    private static readonly SolidColorBrush ErrorBrush = new(Color.FromRgb(244, 67, 54));
+    private static readonly SolidColorBrush SuccessBrush = new(Color.FromRgb(76, 175, 80));
+    private static readonly SolidColorBrush PrimaryBrush = new(Color.FromRgb(107, 31, 173));
+    private static readonly SolidColorBrush NeutralBrush = new(Color.FromRgb(61, 61, 61));
+
     private readonly SessionOrchestrationService _service;
     private readonly DispatcherTimer _durationTimer;
     private readonly List<FrameSample> _samples = new();
@@ -119,23 +125,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public bool IsSessionRunning => State == SessionState.Running;
     public bool HasError => !string.IsNullOrWhiteSpace(LastError);
     public bool ShowStatusBanner => !string.IsNullOrWhiteSpace(StatusMessage);
-    public bool HasNoSessions => true; // Placeholder - would be populated from session list
-    public bool HasSessions => false; // Placeholder - would be populated from session list
+    public bool HasNoSessions => true; // TODO: Populate from session list service
+    public bool HasSessions => !HasNoSessions;
 
-    // Status banner styling
-    public Brush StatusBannerBackground => State == SessionState.Error 
-        ? new SolidColorBrush(Color.FromRgb(244, 67, 54)) 
-        : new SolidColorBrush(Color.FromRgb(76, 175, 80));
+    // Status banner styling (using cached brushes)
+    public Brush StatusBannerBackground => State == SessionState.Error ? ErrorBrush : SuccessBrush;
     public Brush StatusBannerForeground => Brushes.White;
-    public string StatusBannerIcon => State == SessionState.Error ? "ErrorCircle24" : "CheckmarkCircle24";
 
-    // Session state badge styling
+    // Session state badge styling (using cached brushes)
     public Brush SessionStateBadgeBackground => State switch
     {
-        SessionState.Running => new SolidColorBrush(Color.FromRgb(76, 175, 80)),
-        SessionState.Error => new SolidColorBrush(Color.FromRgb(244, 67, 54)),
-        SessionState.Completed => new SolidColorBrush(Color.FromRgb(107, 31, 173)),
-        _ => new SolidColorBrush(Color.FromRgb(61, 61, 61))
+        SessionState.Running => SuccessBrush,
+        SessionState.Error => ErrorBrush,
+        SessionState.Completed => PrimaryBrush,
+        _ => NeutralBrush
     };
     public Brush SessionStateBadgeForeground => Brushes.White;
 
@@ -168,12 +171,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 UpdateStatus();
                 StartCommand.RaiseCanExecuteChanged();
                 EndCommand.RaiseCanExecuteChanged();
+                ToggleSessionCommand.RaiseCanExecuteChanged();
                 ExportPdfCommand.RaiseCanExecuteChanged();
                 OpenFolderCommand.RaiseCanExecuteChanged();
                 OnPropertyChanged(nameof(IsSessionRunning));
                 OnPropertyChanged(nameof(SessionStateBadgeBackground));
                 OnPropertyChanged(nameof(StatusBannerBackground));
-                OnPropertyChanged(nameof(StatusBannerIcon));
             }
         }
     }
