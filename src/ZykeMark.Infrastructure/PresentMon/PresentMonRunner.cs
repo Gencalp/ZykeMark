@@ -764,10 +764,10 @@ public sealed class PresentMonRunner : IPresentMonRunner
             // Check for ETW loss warning without a count
             if (etwLostNoCountPattern.IsMatch(line))
             {
-                // Mark as detected but with unknown count (use -1 to indicate "detected but unknown")
+                // If we detected ETW loss but couldn't parse a count, use 1 as minimum
+                // This ensures the risk level is at least Low when ETW loss is mentioned
                 if (!totalEtwEventsLost.HasValue)
                 {
-                    // If we detected ETW loss but couldn't parse a count, use 1 as minimum
                     totalEtwEventsLost = 1;
                 }
                 rawWarnings.Add(line.Trim());
