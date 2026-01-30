@@ -80,7 +80,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         ExportPdfCommand = new RelayCommand(ExportPdf, () => !string.IsNullOrWhiteSpace(SessionFolder));
         OpenFolderCommand = new RelayCommand(() => _service.OpenSessionFolder(), () => !string.IsNullOrWhiteSpace(SessionFolder));
         CopyErrorCommand = new RelayCommand(CopyErrorDetails, () => !string.IsNullOrWhiteSpace(LastError));
-        RefreshSessionsCommand = new RelayCommand(RescanSessions, () => true);
+        RefreshSessionsCommand = new RelayCommand(RefreshSessions, () => true);
         ResetFiltersCommand = new RelayCommand(ResetFilters, () => true);
         BrowsePresentMonPathCommand = new RelayCommand(BrowsePresentMonPath, () => true);
         ValidatePresentMonPathCommand = new RelayCommand(ValidatePresentMonPath, () => true);
@@ -178,7 +178,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string ProcessName
     {
         get => _processName;
-        set => SetField(ref _processName, value);
+        set
+        {
+            if (SetField(ref _processName, value))
+            {
+                // Clear the selected process ID when the user manually types a process name
+                // This prevents using an old PID with a new manually-typed process name
+                if (_selectedProcess is not null && value != _selectedProcess.DisplayName && value != _selectedProcess.FullDisplayName)
+                {
+                    _selectedProcess = null;
+                    _selectedProcessId = null;
+                    OnPropertyChanged(nameof(SelectedProcess));
+                }
+                OnPropertyChanged(nameof(IsProcessValid));
+                OnPropertyChanged(nameof(ProcessValidationMessage));
+                StartCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public string BuildVersion
@@ -425,7 +441,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             return;
         }
 
+        // Dispose previous CancellationTokenSource if any
         _countdownCts?.Cancel();
+        _countdownCts?.Dispose();
         _countdownCts = new CancellationTokenSource();
         CountdownSeconds = 5;
         State = SessionState.Countdown;
@@ -522,8 +540,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void EndSession()
     {
-        // Cancel countdown if active
+        // Cancel and dispose countdown if active
         _countdownCts?.Cancel();
+        _countdownCts?.Dispose();
+        _countdownCts = null;
         _countdownTimer.Stop();
 
         if (State == SessionState.Countdown)
@@ -1033,24 +1053,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    private void RescanSessions()
-    {
-        RefreshSessions();
-    }
-
     private void ResetFilters()
     {
-        // Reset search query
+        // Reset search query using backing field to avoid triggering filter during reset
         _sessionSearchQuery = "";
         OnPropertyChanged(nameof(SessionSearchQuery));
 
-        // Reset sort to default (Date desc = index 0)
+        // Reset sort to default (Date desc = index 0) using backing field
         _selectedSortIndex = 0;
         OnPropertyChanged(nameof(SelectedSortIndex));
 
-        // Reload sessions with defaults
+        // Apply the default sort (Date desc) without triggering the filter chain
+        var sorted = _allSessions.OrderByDescending(s => s.StartedAtUtc).ToList();
         Sessions.Clear();
-        foreach (var session in _allSessions)
+        foreach (var session in sorted)
         {
             Sessions.Add(session);
         }
