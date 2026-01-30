@@ -1,0 +1,139 @@
+<Page x:Class="ZykeMark.App.Desktop.Views.DashboardPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Dashboard" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+      Background="Transparent">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
+        <StackPanel>
+            <!-- Welcome Header -->
+            <StackPanel Margin="0,0,0,24">
+                <TextBlock Text="Dashboard" FontSize="28" FontWeight="SemiBold" 
+                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                <TextBlock Text="Overview of your benchmarking activity" FontSize="14" 
+                           Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <!-- Quick Actions -->
+            <TextBlock Text="Quick Actions" FontSize="16" FontWeight="SemiBold" 
+                       Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+            <UniformGrid Columns="3" Margin="0,0,0,24">
+                <ui:CardAction Margin="0,0,8,0" Command="{Binding StartCommand}" IsChevronVisible="False">
+                    <StackPanel>
+                        <ui:SymbolIcon Symbol="Play24" FontSize="24" Foreground="{StaticResource ZykePrimaryBrush}"/>
+                        <TextBlock Text="Start Session" FontWeight="SemiBold" Margin="0,8,0,4" 
+                                   Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                        <TextBlock Text="Begin a new capture session" FontSize="11" 
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </ui:CardAction>
+                <ui:CardAction Margin="4,0" Command="{Binding OpenFolderCommand}" IsChevronVisible="False">
+                    <StackPanel>
+                        <ui:SymbolIcon Symbol="Folder24" FontSize="24" Foreground="{StaticResource ZykeAccentBrush}"/>
+                        <TextBlock Text="Open Sessions" FontWeight="SemiBold" Margin="0,8,0,4"
+                                   Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                        <TextBlock Text="Browse captured sessions" FontSize="11" 
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </ui:CardAction>
+                <ui:CardAction Margin="8,0,0,0" Command="{Binding ExportPdfCommand}" IsChevronVisible="False">
+                    <StackPanel>
+                        <ui:SymbolIcon Symbol="DocumentPdf24" FontSize="24" Foreground="{StaticResource ZykeSuccessBrush}"/>
+                        <TextBlock Text="Export Report" FontWeight="SemiBold" Margin="0,8,0,4"
+                                   Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                        <TextBlock Text="Generate PDF report" FontSize="11" 
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </ui:CardAction>
+            </UniformGrid>
+
+            <!-- Status Overview -->
+            <TextBlock Text="Current Status" FontSize="16" FontWeight="SemiBold" 
+                       Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+            <ui:Card Margin="0,0,0,24">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Width="48" Height="48" CornerRadius="8" 
+                            Background="{StaticResource ZykeSurfaceAltBrush}" Margin="0,0,16,0">
+                        <ui:SymbolIcon Symbol="Gauge24" FontSize="24" Foreground="{StaticResource ZykePrimaryBrush}"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding StatusText}" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                        <TextBlock Text="{Binding StatusMessage}" FontSize="12" 
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                        <TextBlock Text="Duration" FontSize="11" Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding DurationText}" FontSize="20" FontWeight="Bold"
+                                   Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                    </StackPanel>
+                </Grid>
+            </ui:Card>
+
+            <!-- Getting Started -->
+            <TextBlock Text="Getting Started" FontSize="16" FontWeight="SemiBold" 
+                       Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+            <ui:Card>
+                <StackPanel>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Width="28" Height="28" CornerRadius="14" 
+                                Background="{StaticResource ZykePrimaryBrush}" Margin="0,0,12,0">
+                            <TextBlock Text="1" FontWeight="Bold" Foreground="White" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Enter process name" FontWeight="SemiBold"
+                                       Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            <TextBlock Text="Specify the game or application to benchmark" FontSize="12" 
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Width="28" Height="28" CornerRadius="14" 
+                                Background="{StaticResource ZykePrimaryBrush}" Margin="0,0,12,0">
+                            <TextBlock Text="2" FontWeight="Bold" Foreground="White" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Start capture session" FontWeight="SemiBold"
+                                       Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            <TextBlock Text="Press Start or use Ctrl+Enter to begin" FontSize="12" 
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Width="28" Height="28" CornerRadius="14" 
+                                Background="{StaticResource ZykePrimaryBrush}" Margin="0,0,12,0">
+                            <TextBlock Text="3" FontWeight="Bold" Foreground="White" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="View results and export" FontWeight="SemiBold"
+                                       Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            <TextBlock Text="Analyze metrics or generate PDF report (Ctrl+E)" FontSize="12" 
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ui:Card>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
