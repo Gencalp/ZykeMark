@@ -114,9 +114,10 @@
                                         <TextBlock Text="{Binding SessionId}" FontSize="11"
                                                    Foreground="{StaticResource ZykeTextSecondaryBrush}" MaxWidth="150" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Text=" • " FontSize="11" Foreground="{StaticResource ZykeTextSecondaryBrush}"
-                                                   Visibility="{Binding BuildVersion, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                   Visibility="{Binding BuildVersion, Converter={StaticResource StringToVisibilityConverter}}"/>
                                         <TextBlock Text="{Binding BuildVersion}" FontSize="11"
-                                                   Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                                   Foreground="{StaticResource ZykeTextSecondaryBrush}"
+                                                   Visibility="{Binding BuildVersion, Converter={StaticResource StringToVisibilityConverter}}"/>
                                     </StackPanel>
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" Text="{Binding StartDateDisplay}" VerticalAlignment="Center"

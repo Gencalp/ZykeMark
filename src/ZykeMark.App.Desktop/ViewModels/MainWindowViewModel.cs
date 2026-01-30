@@ -35,6 +35,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _presentMonPath = string.Empty;
     private string _sessionSearchQuery = string.Empty;
     private SessionListItem? _selectedSession;
+    private IReadOnlyList<SessionListItem> _allSessions = Array.Empty<SessionListItem>();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -61,6 +62,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         ValidatePresentMonPathCommand = new RelayCommand(ValidatePresentMonPath, () => true);
         OpenSelectedSessionFolderCommand = new RelayCommand(OpenSelectedSessionFolder, () => SelectedSession is not null);
         OpenSelectedSessionReportCommand = new RelayCommand(OpenSelectedSessionReport, () => SelectedSession?.HasReport == true);
+        OpenLastSessionFolderCommand = new RelayCommand(OpenLastSessionFolder, () => HasSessions);
 
         StatusText = "Idle";
         DurationText = "00:00:00";
@@ -85,6 +87,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public RelayCommand ValidatePresentMonPathCommand { get; }
     public RelayCommand OpenSelectedSessionFolderCommand { get; }
     public RelayCommand OpenSelectedSessionReportCommand { get; }
+    public RelayCommand OpenLastSessionFolderCommand { get; }
 
     public ObservableCollection<SessionListItem> Sessions { get; }
 
@@ -323,11 +326,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                     ? string.Join(", ", summary.DataQuality.CaptureWarnings)
                     : "None";
 
-                // Calculate outlier risk based on worst frame time
+                // Calculate outlier risk based on P99 frame time from summary (not local samples)
                 if (summary.Aggregates is not null)
                 {
-                    var worstFrameTime = _samples.Count > 0 ? _samples.Max(s => s.FrameTimeMs) : 0;
-                    DataQualityOutlierRisk = worstFrameTime > 1000 ? "High" : worstFrameTime > 500 ? "Moderate" : "Low";
+                    var p99FrameTime = summary.Aggregates.P99FrameTimeMs;
+                    DataQualityOutlierRisk = p99FrameTime > 1000 ? "High" : p99FrameTime > 500 ? "Moderate" : "Low";
                 }
 
                 OnPropertyChanged(nameof(DataQualityEtwRisk));
@@ -379,19 +382,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         try
         {
-            var discoveredSessions = _discoveryService.DiscoverSessions();
+            // Cache all sessions for efficient filtering
+            _allSessions = _discoveryService.DiscoverSessions();
             Sessions.Clear();
 
-            foreach (var session in discoveredSessions)
+            foreach (var session in _allSessions)
             {
                 Sessions.Add(session);
             }
 
-            // Update last session summary for Dashboard
+            // Update last session summary for Dashboard (uses _allSessions which is sorted by date descending)
             UpdateLastSessionSummary();
 
             OnPropertyChanged(nameof(HasNoSessions));
             OnPropertyChanged(nameof(HasSessions));
+            OpenLastSessionFolderCommand.RaiseCanExecuteChanged();
             StatusMessage = Sessions.Count > 0
                 ? $"Found {Sessions.Count} session(s)."
                 : "No sessions found.";
@@ -404,7 +409,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void UpdateLastSessionSummary()
     {
-        if (Sessions.Count == 0)
+        // Use cached _allSessions (already sorted by date descending from discovery service)
+        if (_allSessions.Count == 0)
         {
             LastSessionGameName = "N/A";
             LastSessionDate = "N/A";
@@ -413,7 +419,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
         else
         {
-            var lastSession = Sessions.First(); // Already sorted by date descending
+            var lastSession = _allSessions.First();
             LastSessionGameName = lastSession.GameName;
             LastSessionDate = lastSession.StartDateDisplay;
             LastSessionAvgFps = lastSession.AvgFpsDisplay;
@@ -428,16 +434,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void FilterSessions()
     {
-        // Re-discover and filter by search query
+        // Filter from cached session list (avoids disk I/O on every keystroke)
         try
         {
-            var discoveredSessions = _discoveryService.DiscoverSessions();
             Sessions.Clear();
 
             var query = SessionSearchQuery?.Trim().ToLowerInvariant();
             var filtered = string.IsNullOrEmpty(query)
-                ? discoveredSessions
-                : discoveredSessions.Where(s =>
+                ? _allSessions
+                : _allSessions.Where(s =>
                     (s.GameName?.ToLowerInvariant().Contains(query) == true) ||
                     (s.BuildVersion?.ToLowerInvariant().Contains(query) == true) ||
                     (s.SessionId?.ToLowerInvariant().Contains(query) == true));
@@ -474,6 +479,28 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             HandleError("Failed to open session folder.", ex);
+        }
+    }
+
+    private void OpenLastSessionFolder()
+    {
+        if (_allSessions.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var lastSession = _allSessions.First();
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = lastSession.SessionFolder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            HandleError("Failed to open last session folder.", ex);
         }
     }
 

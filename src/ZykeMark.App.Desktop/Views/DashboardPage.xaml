@@ -108,8 +108,9 @@
                                        Foreground="{StaticResource ZykeWarningBrush}"/>
                         </StackPanel>
 
-                        <ui:Button Grid.Column="3" Content="View Details" Icon="{ui:SymbolIcon ArrowRight24}"
-                                   Command="{Binding OpenFolderCommand}" Appearance="Secondary" VerticalAlignment="Center"/>
+                        <ui:Button Grid.Column="3" Content="Open Folder" Icon="{ui:SymbolIcon FolderOpen24}"
+                                   Command="{Binding OpenLastSessionFolderCommand}" Appearance="Secondary" VerticalAlignment="Center"
+                                   ToolTip="Open last session folder"/>
                     </Grid>
                 </ui:Card>
             </StackPanel>

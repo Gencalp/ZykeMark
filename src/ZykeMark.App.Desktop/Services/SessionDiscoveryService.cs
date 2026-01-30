@@ -170,9 +170,22 @@ public sealed record SessionListItem(
 {
     public string StartDateDisplay => StartedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
-    public string DurationDisplay => DurationMs.HasValue
-        ? TimeSpan.FromMilliseconds(DurationMs.Value).ToString(@"mm\:ss")
-        : "--:--";
+    public string DurationDisplay
+    {
+        get
+        {
+            if (!DurationMs.HasValue)
+            {
+                return "--:--";
+            }
+
+            var duration = TimeSpan.FromMilliseconds(DurationMs.Value);
+            // Include hours when duration is 60+ minutes
+            return duration.TotalHours >= 1
+                ? duration.ToString(@"h\:mm\:ss")
+                : duration.ToString(@"mm\:ss");
+        }
+    }
 
     public string AvgFpsDisplay => AvgFps.HasValue
         ? AvgFps.Value.ToString("F1")
