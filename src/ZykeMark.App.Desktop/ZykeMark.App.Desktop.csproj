@@ -5,10 +5,16 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ZykeMark.Core\ZykeMark.Core.csproj" />
     <ProjectReference Include="..\ZykeMark.Infrastructure\ZykeMark.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="WPF-UI" Version="4.2.0" />
   </ItemGroup>
 </Project>

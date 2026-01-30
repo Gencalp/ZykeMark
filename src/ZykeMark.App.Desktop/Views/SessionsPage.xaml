@@ -1,0 +1,134 @@
+<Page x:Class="ZykeMark.App.Desktop.Views.SessionsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Sessions" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+      Background="Transparent">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Page Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <TextBlock Text="Sessions" FontSize="28" FontWeight="SemiBold" 
+                       Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+            <TextBlock Text="Browse and manage previous capture sessions" FontSize="14" 
+                       Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- Search and Filter Bar -->
+        <Grid Grid.Row="1" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ui:TextBox Grid.Column="0" PlaceholderText="Search sessions..." 
+                        Icon="{ui:SymbolIcon Search24}" MaxWidth="400" HorizontalAlignment="Left"
+                        Text="{Binding SessionSearchQuery, UpdateSourceTrigger=PropertyChanged}"/>
+            <ComboBox Grid.Column="1" Width="150" Margin="12,0,0,0" SelectedIndex="0">
+                <ComboBoxItem Content="Sort by Date"/>
+                <ComboBoxItem Content="Sort by Name"/>
+                <ComboBoxItem Content="Sort by Duration"/>
+            </ComboBox>
+            <ui:Button Grid.Column="2" Icon="{ui:SymbolIcon ArrowClockwise24}" 
+                       ToolTip="Refresh" Margin="8,0,0,0" Command="{Binding RefreshSessionsCommand}"/>
+        </Grid>
+
+        <!-- Sessions List -->
+        <ui:Card Grid.Row="2">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header Row -->
+                <Border Grid.Row="0" Background="{StaticResource ZykeSurfaceAltBrush}" Padding="16,12"
+                        CornerRadius="8,8,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Session" FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                        <TextBlock Grid.Column="1" Text="Date" FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                        <TextBlock Grid.Column="2" Text="Duration" FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                        <TextBlock Grid.Column="3" Text="Avg FPS" FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                        <TextBlock Grid.Column="4" Text="Actions" FontWeight="SemiBold" FontSize="12" Width="100"
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                    </Grid>
+                </Border>
+
+                <!-- Content - Placeholder/Empty State -->
+                <Border Grid.Row="1" Padding="24" Visibility="{Binding HasNoSessions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="History24" FontSize="48" 
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,0,0,16"/>
+                        <TextBlock Text="No sessions yet" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{StaticResource ZykeTextPrimaryBrush}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Start a capture session to see your history here" FontSize="13"
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,4,0,16"/>
+                        <ui:Button Content="Start New Session" Icon="{ui:SymbolIcon Play24}" 
+                                   Command="{Binding StartCommand}" Appearance="Primary"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Sessions ListView -->
+                <ListView Grid.Row="1" ItemsSource="{Binding Sessions}" 
+                          Background="Transparent" BorderThickness="0"
+                          Visibility="{Binding HasSessions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="Padding" Value="16,12"/>
+                            <Setter Property="Margin" Value="0"/>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="{Binding GameName}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding SessionId}" FontSize="11"
+                                               Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding StartDate}" VerticalAlignment="Center"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Duration}" VerticalAlignment="Center"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                                <TextBlock Grid.Column="3" Text="{Binding AvgFps}" VerticalAlignment="Center"
+                                           Foreground="{StaticResource ZykeSuccessBrush}" FontWeight="SemiBold"/>
+                                <StackPanel Grid.Column="4" Orientation="Horizontal" Width="100">
+                                    <ui:Button Icon="{ui:SymbolIcon Open24}" ToolTip="Open" 
+                                               Command="{Binding OpenCommand}" Appearance="Secondary" Margin="0,0,4,0"/>
+                                    <ui:Button Icon="{ui:SymbolIcon DocumentPdf24}" ToolTip="Export PDF" 
+                                               Command="{Binding ExportCommand}" Appearance="Secondary"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+        </ui:Card>
+    </Grid>
+</Page>

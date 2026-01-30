@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using ZykeMark.App.Desktop.Commands;
@@ -12,6 +13,12 @@ namespace ZykeMark.App.Desktop.ViewModels;
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged
 {
+    // Cached brushes for performance
+    private static readonly SolidColorBrush ErrorBrush = new(Color.FromRgb(244, 67, 54));
+    private static readonly SolidColorBrush SuccessBrush = new(Color.FromRgb(76, 175, 80));
+    private static readonly SolidColorBrush PrimaryBrush = new(Color.FromRgb(107, 31, 173));
+    private static readonly SolidColorBrush NeutralBrush = new(Color.FromRgb(61, 61, 61));
+
     private readonly SessionOrchestrationService _service;
     private readonly DispatcherTimer _durationTimer;
     private readonly List<FrameSample> _samples = new();
@@ -22,6 +29,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _lastError = string.Empty;
     private string _processName = string.Empty;
     private string _buildVersion = string.Empty;
+    private string _presentMonPath = string.Empty;
+    private string _sessionSearchQuery = string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -36,21 +45,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
         StartCommand = new RelayCommand(StartSession, () => State is SessionState.Idle or SessionState.Completed or SessionState.Error);
         EndCommand = new RelayCommand(EndSession, () => State == SessionState.Running);
+        ToggleSessionCommand = new RelayCommand(ToggleSession, () => true);
         ExportPdfCommand = new RelayCommand(ExportPdf, () => !string.IsNullOrWhiteSpace(SessionFolder));
         OpenFolderCommand = new RelayCommand(() => _service.OpenSessionFolder(), () => !string.IsNullOrWhiteSpace(SessionFolder));
         CopyErrorCommand = new RelayCommand(CopyErrorDetails, () => !string.IsNullOrWhiteSpace(LastError));
+        RefreshSessionsCommand = new RelayCommand(RefreshSessions, () => true);
+        BrowsePresentMonPathCommand = new RelayCommand(BrowsePresentMonPath, () => true);
 
         StatusText = "Idle";
         DurationText = "00:00:00";
         VerdictSummary = "Awaiting session.";
         NextStepsSummary = "Start a session to see recommendations.";
+        DataQualityEtwRisk = "None";
+        DataQualityOutlierRisk = "Low";
+        DataQualityWarnings = "None";
     }
 
     public RelayCommand StartCommand { get; }
     public RelayCommand EndCommand { get; }
+    public RelayCommand ToggleSessionCommand { get; }
     public RelayCommand ExportPdfCommand { get; }
     public RelayCommand OpenFolderCommand { get; }
     public RelayCommand CopyErrorCommand { get; }
+    public RelayCommand RefreshSessionsCommand { get; }
+    public RelayCommand BrowsePresentMonPathCommand { get; }
 
     public string StatusText { get; private set; } = string.Empty;
     public string DurationText { get; private set; } = string.Empty;
@@ -58,13 +76,25 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string StatusMessage
     {
         get => _statusMessage;
-        private set => SetField(ref _statusMessage, value);
+        private set
+        {
+            if (SetField(ref _statusMessage, value))
+            {
+                OnPropertyChanged(nameof(ShowStatusBanner));
+            }
+        }
     }
 
     public string LastError
     {
         get => _lastError;
-        private set => SetField(ref _lastError, value);
+        private set
+        {
+            if (SetField(ref _lastError, value))
+            {
+                OnPropertyChanged(nameof(HasError));
+            }
+        }
     }
 
     public string ProcessName
@@ -78,6 +108,39 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         get => _buildVersion;
         set => SetField(ref _buildVersion, value);
     }
+
+    public string PresentMonPath
+    {
+        get => _presentMonPath;
+        set => SetField(ref _presentMonPath, value);
+    }
+
+    public string SessionSearchQuery
+    {
+        get => _sessionSearchQuery;
+        set => SetField(ref _sessionSearchQuery, value);
+    }
+
+    // Session status properties for UI
+    public bool IsSessionRunning => State == SessionState.Running;
+    public bool HasError => !string.IsNullOrWhiteSpace(LastError);
+    public bool ShowStatusBanner => !string.IsNullOrWhiteSpace(StatusMessage);
+    public bool HasNoSessions => true; // TODO: Populate from session list service
+    public bool HasSessions => !HasNoSessions;
+
+    // Status banner styling (using cached brushes)
+    public Brush StatusBannerBackground => State == SessionState.Error ? ErrorBrush : SuccessBrush;
+    public Brush StatusBannerForeground => Brushes.White;
+
+    // Session state badge styling (using cached brushes)
+    public Brush SessionStateBadgeBackground => State switch
+    {
+        SessionState.Running => SuccessBrush,
+        SessionState.Error => ErrorBrush,
+        SessionState.Completed => PrimaryBrush,
+        _ => NeutralBrush
+    };
+    public Brush SessionStateBadgeForeground => Brushes.White;
 
     public string CurrentFps { get; private set; } = "0.0";
     public string AvgFps { get; private set; } = "0.0";
@@ -93,6 +156,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string VerdictSummary { get; private set; } = string.Empty;
     public string NextStepsSummary { get; private set; } = string.Empty;
 
+    // Data Quality properties
+    public string DataQualityEtwRisk { get; private set; } = "None";
+    public string DataQualityOutlierRisk { get; private set; } = "Low";
+    public string DataQualityWarnings { get; private set; } = "None";
+
     private SessionState State
     {
         get => _state;
@@ -103,9 +171,25 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 UpdateStatus();
                 StartCommand.RaiseCanExecuteChanged();
                 EndCommand.RaiseCanExecuteChanged();
+                ToggleSessionCommand.RaiseCanExecuteChanged();
                 ExportPdfCommand.RaiseCanExecuteChanged();
                 OpenFolderCommand.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(IsSessionRunning));
+                OnPropertyChanged(nameof(SessionStateBadgeBackground));
+                OnPropertyChanged(nameof(StatusBannerBackground));
             }
+        }
+    }
+
+    private void ToggleSession()
+    {
+        if (State == SessionState.Running)
+        {
+            EndSession();
+        }
+        else if (State is SessionState.Idle or SessionState.Completed or SessionState.Error)
+        {
+            StartSession();
         }
     }
 
@@ -178,6 +262,25 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
         Clipboard.SetText(LastError);
         StatusMessage = "Error details copied.";
+    }
+
+    private void RefreshSessions()
+    {
+        StatusMessage = "Sessions refreshed.";
+    }
+
+    private void BrowsePresentMonPath()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "Executable|*.exe",
+            Title = "Select PresentMon executable"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            PresentMonPath = dialog.FileName;
+        }
     }
 
     private void OnChunkReceived(object? sender, RawSampleChunk chunk)

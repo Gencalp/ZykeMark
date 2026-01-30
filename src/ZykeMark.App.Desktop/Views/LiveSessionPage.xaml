@@ -1,0 +1,401 @@
+<Page x:Class="ZykeMark.App.Desktop.Views.LiveSessionPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Live Session" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+      Background="Transparent">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Page Header -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,24">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Live Session" FontSize="28" FontWeight="SemiBold" 
+                                   Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                        <TextBlock Text="Real-time performance metrics and analysis" FontSize="14" 
+                                   Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,4,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border CornerRadius="4" Padding="8,4" Margin="0,0,8,0"
+                                Background="{Binding SessionStateBadgeBackground}">
+                            <TextBlock Text="{Binding StatusText}" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{Binding SessionStateBadgeForeground}"/>
+                        </Border>
+                        <ui:ProgressRing IsIndeterminate="True" Width="20" Height="20"
+                                         Visibility="{Binding IsSessionRunning, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
+            <!-- Key Metrics Cards -->
+            <StackPanel Grid.Row="1" Margin="0,0,0,24">
+                <TextBlock Text="Key Performance Metrics" FontSize="16" FontWeight="SemiBold" 
+                           Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+                <UniformGrid Columns="3" Rows="3">
+                    <!-- Current FPS -->
+                    <ui:Card Margin="0,0,8,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="{StaticResource ZykePrimaryBrush}" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Gauge24" FontSize="20" 
+                                           Foreground="{StaticResource ZykePrimaryBrush}"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Current FPS" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding CurrentFps}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- Avg FPS -->
+                    <ui:Card Margin="4,0,4,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="{StaticResource ZykeSuccessBrush}" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="DataTrending24" FontSize="20" 
+                                           Foreground="{StaticResource ZykeSuccessBrush}"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Average FPS" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding AvgFps}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- 1% Low -->
+                    <ui:Card Margin="8,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="{StaticResource ZykeWarningBrush}" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="ArrowTrendingDown24" FontSize="20" 
+                                           Foreground="{StaticResource ZykeWarningBrush}"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="1% Low" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding OnePercentLowFps}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- 0.1% Low -->
+                    <ui:Card Margin="0,0,8,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="{StaticResource ZykeErrorBrush}" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Warning24" FontSize="20" 
+                                           Foreground="{StaticResource ZykeErrorBrush}"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="0.1% Low" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding PointOnePercentLowFps}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- Avg Frame Time -->
+                    <ui:Card Margin="4,0,4,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="{StaticResource ZykePrimaryBrush}" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Timer24" FontSize="20" 
+                                           Foreground="{StaticResource ZykePrimaryBrush}"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Avg Frame Time" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding AvgFrameTimeMs}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- P99 Frame Time -->
+                    <ui:Card Margin="8,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="{StaticResource ZykeWarningBrush}" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Clock24" FontSize="20" 
+                                           Foreground="{StaticResource ZykeWarningBrush}"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="P99 Frame Time" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding P99FrameTimeMs}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- Worst Frame Time -->
+                    <ui:Card Margin="0,0,8,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="{StaticResource ZykeErrorBrush}" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="ErrorCircle24" FontSize="20" 
+                                           Foreground="{StaticResource ZykeErrorBrush}"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Worst Frame Time" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding WorstFrameTimeMs}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- Avg CPU Frame Time -->
+                    <ui:Card Margin="4,0,4,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#2196F3" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Desktop24" FontSize="20" 
+                                           Foreground="#2196F3"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Avg CPU FT" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding AvgCpuFrameTimeMs}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- Avg GPU Frame Time -->
+                    <ui:Card Margin="8,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#9C27B0" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Video24" FontSize="20" 
+                                           Foreground="#9C27B0"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Avg GPU FT" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding AvgGpuFrameTimeMs}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+                </UniformGrid>
+            </StackPanel>
+
+            <!-- Stutter Markers -->
+            <StackPanel Grid.Row="2" Margin="0,0,0,24">
+                <TextBlock Text="Stutter Detection" FontSize="16" FontWeight="SemiBold" 
+                           Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+                <ui:Card>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Width="12" Height="12" CornerRadius="6" 
+                                        Background="{StaticResource ZykeWarningBrush}" Margin="0,0,12,0"/>
+                                <TextBlock Grid.Column="1" Text="Stutters ≥ 50ms" FontSize="13"
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Stutter50Count}" FontSize="20" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeWarningBrush}"/>
+                            </Grid>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="16,0,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Width="12" Height="12" CornerRadius="6" 
+                                        Background="{StaticResource ZykeErrorBrush}" Margin="0,0,12,0"/>
+                                <TextBlock Grid.Column="1" Text="Stutters ≥ 100ms" FontSize="13"
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Stutter100Count}" FontSize="20" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeErrorBrush}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </ui:Card>
+            </StackPanel>
+
+            <!-- Charts Section -->
+            <StackPanel Grid.Row="3" Margin="0,0,0,24">
+                <TextBlock Text="Performance Charts" FontSize="16" FontWeight="SemiBold" 
+                           Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <ui:Card Grid.Column="0" Margin="0,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="FPS Over Time" FontSize="13" FontWeight="SemiBold" 
+                                       Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <Border Background="{StaticResource ZykeSurfaceAltBrush}" CornerRadius="8" 
+                                    Height="150" Padding="16">
+                                <TextBlock Text="Chart visualization (requires data)" FontSize="12"
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </StackPanel>
+                    </ui:Card>
+                    <ui:Card Grid.Column="1" Margin="8,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Frame Time Over Time" FontSize="13" FontWeight="SemiBold" 
+                                       Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <Border Background="{StaticResource ZykeSurfaceAltBrush}" CornerRadius="8" 
+                                    Height="150" Padding="16">
+                                <TextBlock Text="Chart visualization (requires data)" FontSize="12"
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </StackPanel>
+                    </ui:Card>
+                </Grid>
+            </StackPanel>
+
+            <!-- Data Quality Panel -->
+            <StackPanel Grid.Row="4" Margin="0,0,0,24">
+                <TextBlock Text="Data Quality" FontSize="16" FontWeight="SemiBold" 
+                           Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+                <ui:Card>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <TextBlock Text="ETW Loss Risk" FontSize="12" 
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="CheckmarkCircle24" FontSize="18" 
+                                               Foreground="{StaticResource ZykeSuccessBrush}" Margin="0,0,8,0"/>
+                                <TextBlock Text="{Binding DataQualityEtwRisk}" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="8,0,8,0">
+                            <TextBlock Text="Outlier Risk" FontSize="12" 
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="CheckmarkCircle24" FontSize="18" 
+                                               Foreground="{StaticResource ZykeSuccessBrush}" Margin="0,0,8,0"/>
+                                <TextBlock Text="{Binding DataQualityOutlierRisk}" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Margin="16,0,0,0">
+                            <TextBlock Text="Capture Warnings" FontSize="12" 
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="CheckmarkCircle24" FontSize="18" 
+                                               Foreground="{StaticResource ZykeSuccessBrush}" Margin="0,0,8,0"/>
+                                <TextBlock Text="{Binding DataQualityWarnings}" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </ui:Card>
+            </StackPanel>
+
+            <!-- Verdict and Next Steps -->
+            <Grid Grid.Row="5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <TextBlock Text="Verdict" FontSize="16" FontWeight="SemiBold" 
+                               Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+                    <ui:Card>
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <ui:SymbolIcon Grid.Column="0" Symbol="Beaker24" FontSize="24" 
+                                               Foreground="{StaticResource ZykePrimaryBrush}" Margin="0,0,12,0"/>
+                                <TextBlock Grid.Column="1" Text="{Binding VerdictSummary}" TextWrapping="Wrap"
+                                           FontSize="13" Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </Grid>
+                        </StackPanel>
+                    </ui:Card>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                    <TextBlock Text="Next Steps" FontSize="16" FontWeight="SemiBold" 
+                               Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+                    <ui:Card>
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <ui:SymbolIcon Grid.Column="0" Symbol="Lightbulb24" FontSize="24" 
+                                               Foreground="{StaticResource ZykeAccentBrush}" Margin="0,0,12,0"/>
+                                <TextBlock Grid.Column="1" Text="{Binding NextStepsSummary}" TextWrapping="Wrap"
+                                           FontSize="13" Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </Grid>
+                        </StackPanel>
+                    </ui:Card>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </ScrollViewer>
+</Page>
