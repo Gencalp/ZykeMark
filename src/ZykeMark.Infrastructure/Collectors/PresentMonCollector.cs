@@ -94,9 +94,9 @@ public sealed class PresentMonCollector : ICollector
             result.EtwEventsLostCount,
             result.RawWarnings?.ToList());
 
-        if (result.EtwEventsLostCount.HasValue)
+        if (LastCollectionDataQuality.EtwEventsLostCount > 0)
         {
-            Log($"[Collector] ETW events lost: {result.EtwEventsLostCount.Value}, Risk level: {LastCollectionDataQuality.EtwEventsLostRiskLevel}");
+            Log($"[Collector] ETW events lost: {LastCollectionDataQuality.EtwEventsLostCount}, Risk level: {LastCollectionDataQuality.EtwEventsLostRiskLevel}");
         }
 
         // Validate we got a CSV path
@@ -247,7 +247,7 @@ public sealed class PresentMonCollector : ICollector
     private IReadOnlyList<FrameSample> CollectFromStdout(TimeSpan duration, PresentMonRunOptions runOptions)
     {
         // Stdout mode doesn't capture ETW loss info (it's in stderr which we don't parse in streaming mode)
-        // Set to empty/unknown
+        // Default to None (0 events lost)
         LastCollectionDataQuality = DataQuality.Empty;
 
         var samples = new List<FrameSample>();

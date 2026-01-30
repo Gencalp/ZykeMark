@@ -5,11 +5,8 @@ namespace ZykeMark.Core.Models;
 /// </summary>
 public enum EtwRiskLevel
 {
-    /// <summary>ETW event loss status is unknown (not detected or parsing failed).</summary>
-    Unknown,
-
     /// <summary>No ETW events were lost.</summary>
-    None,
+    None = 0,
 
     /// <summary>Low number of ETW events lost (1-1000). Minor impact on data quality.</summary>
     Low,
@@ -24,11 +21,11 @@ public enum EtwRiskLevel
 /// <summary>
 /// Represents data quality information for a capture session, including ETW event loss detection.
 /// </summary>
-/// <param name="EtwEventsLostCount">The number of ETW events lost during capture. Null if not detected.</param>
+/// <param name="EtwEventsLostCount">The number of ETW events lost during capture.</param>
 /// <param name="EtwEventsLostRiskLevel">The risk level based on ETW events lost count.</param>
 /// <param name="CaptureWarnings">List of capture-related warnings detected during the session.</param>
 public sealed record DataQuality(
-    int? EtwEventsLostCount,
+    int EtwEventsLostCount,
     EtwRiskLevel EtwEventsLostRiskLevel,
     IReadOnlyList<string> CaptureWarnings)
 {
@@ -44,28 +41,29 @@ public sealed record DataQuality(
     /// </summary>
     public static DataQuality Create(int? etwEventsLostCount, IReadOnlyList<string>? captureWarnings = null)
     {
-        var riskLevel = ComputeRiskLevel(etwEventsLostCount);
-        return new DataQuality(etwEventsLostCount, riskLevel, captureWarnings ?? Array.Empty<string>());
+        // When no ETW warnings found (null count), default to 0 events lost with None risk level
+        var effectiveCount = etwEventsLostCount ?? 0;
+        var riskLevel = ComputeRiskLevel(effectiveCount);
+        return new DataQuality(effectiveCount, riskLevel, captureWarnings ?? Array.Empty<string>());
     }
 
     /// <summary>
     /// Computes the risk level based on the ETW events lost count.
     /// </summary>
-    public static EtwRiskLevel ComputeRiskLevel(int? etwEventsLostCount)
+    public static EtwRiskLevel ComputeRiskLevel(int etwEventsLostCount)
     {
         return etwEventsLostCount switch
         {
-            null => EtwRiskLevel.Unknown,
             0 => EtwRiskLevel.None,
             >= HighThreshold => EtwRiskLevel.High,
             >= ModerateThreshold => EtwRiskLevel.Moderate,
             >= LowThreshold => EtwRiskLevel.Low,
-            _ => EtwRiskLevel.Unknown
+            _ => EtwRiskLevel.None // Negative counts (shouldn't happen) default to None
         };
     }
 
     /// <summary>
-    /// Returns an empty DataQuality instance indicating no quality data is available.
+    /// Returns an empty DataQuality instance indicating no events lost.
     /// </summary>
-    public static DataQuality Empty => new(null, EtwRiskLevel.Unknown, Array.Empty<string>());
+    public static DataQuality Empty => new(0, EtwRiskLevel.None, Array.Empty<string>());
 }

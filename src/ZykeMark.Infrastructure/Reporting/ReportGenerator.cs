@@ -188,16 +188,18 @@ public sealed class ReportGenerator
             return ReportDataQuality.Empty;
         }
 
-        int? etwEventsLostCount = null;
+        // Default to 0 if not present or null
+        int etwEventsLostCount = 0;
         if (dataQualityProp.TryGetProperty("EtwEventsLostCount", out var etwCountProp)
             && etwCountProp.ValueKind != JsonValueKind.Null)
         {
             etwEventsLostCount = etwCountProp.GetInt32();
         }
 
+        // Default to "None" instead of "Unknown"
         var etwRiskLevel = dataQualityProp.TryGetProperty("EtwEventsLostRiskLevel", out var riskProp)
-            ? riskProp.GetString() ?? "Unknown"
-            : "Unknown";
+            ? riskProp.GetString() ?? "None"
+            : "None";
 
         var captureWarnings = new List<string>();
         if (dataQualityProp.TryGetProperty("CaptureWarnings", out var warningsProp)
@@ -486,9 +488,17 @@ public sealed class ReportGenerator
             column.Spacing(ItemGap);
             column.Item().Text("Data Quality & Context").FontSize(SectionTitleSize).FontColor(_theme.Primary).SemiBold();
 
+            // Always show ETW loss line
+            var etwRiskLevel = data.DataQuality.EtwEventsLostRiskLevel;
+            var etwCount = data.DataQuality.EtwEventsLostCount;
+            var etwMessage = etwRiskLevel is "Low" or "Moderate" or "High"
+                ? $"ETW loss: {etwRiskLevel} ({etwCount:N0} events lost during capture)"
+                : $"ETW loss: None ({etwCount} events)";
+            column.Item().Text(etwMessage);
+
             if (insights.Flags.Count == 0)
             {
-                column.Item().Text("No data-quality warnings detected for this run.");
+                column.Item().Text("No additional data-quality warnings detected for this run.");
                 return;
             }
 
@@ -712,9 +722,9 @@ public sealed class ReportGenerator
 
         // Add ETW event loss flag if detected
         var etwRiskLevel = data.DataQuality.EtwEventsLostRiskLevel;
-        if (etwRiskLevel is "Low" or "Moderate" or "High" && data.DataQuality.EtwEventsLostCount.HasValue)
+        if (etwRiskLevel is "Low" or "Moderate" or "High" && data.DataQuality.EtwEventsLostCount > 0)
         {
-            var count = data.DataQuality.EtwEventsLostCount.Value;
+            var count = data.DataQuality.EtwEventsLostCount;
             var severity = etwRiskLevel switch
             {
                 "High" => Severity.High,
@@ -847,11 +857,11 @@ public sealed class ReportGenerator
         ReportDataQuality DataQuality);
 
     private sealed record ReportDataQuality(
-        int? EtwEventsLostCount,
+        int EtwEventsLostCount,
         string EtwEventsLostRiskLevel,
         IReadOnlyList<string> CaptureWarnings)
     {
-        public static ReportDataQuality Empty => new(null, "Unknown", Array.Empty<string>());
+        public static ReportDataQuality Empty => new(0, "None", Array.Empty<string>());
     }
 
     private sealed record ChunkStats(
