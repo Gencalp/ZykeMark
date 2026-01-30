@@ -27,7 +27,7 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <ui:TextBox Grid.Column="0" PlaceholderText="Search sessions..." 
+            <ui:TextBox Grid.Column="0" PlaceholderText="Search by game, build, or session ID..." 
                         Icon="{ui:SymbolIcon Search24}" MaxWidth="400" HorizontalAlignment="Left"
                         Text="{Binding SessionSearchQuery, UpdateSourceTrigger=PropertyChanged}"/>
             <ComboBox Grid.Column="1" Width="150" Margin="12,0,0,0" SelectedIndex="0">
@@ -36,7 +36,7 @@
                 <ComboBoxItem Content="Sort by Duration"/>
             </ComboBox>
             <ui:Button Grid.Column="2" Icon="{ui:SymbolIcon ArrowClockwise24}" 
-                       ToolTip="Refresh" Margin="8,0,0,0" Command="{Binding RefreshSessionsCommand}"/>
+                       ToolTip="Refresh sessions list" Margin="8,0,0,0" Command="{Binding RefreshSessionsCommand}"/>
         </Grid>
 
         <!-- Sessions List -->
@@ -54,9 +54,9 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="2*"/>
                             <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="80"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Session" FontWeight="SemiBold" FontSize="12"
                                    Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
@@ -66,7 +66,7 @@
                                    Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
                         <TextBlock Grid.Column="3" Text="Avg FPS" FontWeight="SemiBold" FontSize="12"
                                    Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
-                        <TextBlock Grid.Column="4" Text="Actions" FontWeight="SemiBold" FontSize="12" Width="100"
+                        <TextBlock Grid.Column="4" Text="Actions" FontWeight="SemiBold" FontSize="12"
                                    Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
                     </Grid>
                 </Border>
@@ -87,6 +87,7 @@
 
                 <!-- Sessions ListView -->
                 <ListView Grid.Row="1" ItemsSource="{Binding Sessions}" 
+                          SelectedItem="{Binding SelectedSession}"
                           Background="Transparent" BorderThickness="0"
                           Visibility="{Binding HasSessions, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <ListView.ItemContainerStyle>
@@ -102,27 +103,37 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="2*"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="80"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
                                     <TextBlock Text="{Binding GameName}" FontWeight="SemiBold"
                                                Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
-                                    <TextBlock Text="{Binding SessionId}" FontSize="11"
-                                               Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding SessionId}" FontSize="11"
+                                                   Foreground="{StaticResource ZykeTextSecondaryBrush}" MaxWidth="150" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text=" • " FontSize="11" Foreground="{StaticResource ZykeTextSecondaryBrush}"
+                                                   Visibility="{Binding BuildVersion, Converter={StaticResource StringToVisibilityConverter}}"/>
+                                        <TextBlock Text="{Binding BuildVersion}" FontSize="11"
+                                                   Foreground="{StaticResource ZykeTextSecondaryBrush}"
+                                                   Visibility="{Binding BuildVersion, Converter={StaticResource StringToVisibilityConverter}}"/>
+                                    </StackPanel>
                                 </StackPanel>
-                                <TextBlock Grid.Column="1" Text="{Binding StartDate}" VerticalAlignment="Center"
+                                <TextBlock Grid.Column="1" Text="{Binding StartDateDisplay}" VerticalAlignment="Center"
                                            Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
-                                <TextBlock Grid.Column="2" Text="{Binding Duration}" VerticalAlignment="Center"
+                                <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" VerticalAlignment="Center"
                                            Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
-                                <TextBlock Grid.Column="3" Text="{Binding AvgFps}" VerticalAlignment="Center"
+                                <TextBlock Grid.Column="3" Text="{Binding AvgFpsDisplay}" VerticalAlignment="Center"
                                            Foreground="{StaticResource ZykeSuccessBrush}" FontWeight="SemiBold"/>
-                                <StackPanel Grid.Column="4" Orientation="Horizontal" Width="100">
-                                    <ui:Button Icon="{ui:SymbolIcon Open24}" ToolTip="Open" 
-                                               Command="{Binding OpenCommand}" Appearance="Secondary" Margin="0,0,4,0"/>
-                                    <ui:Button Icon="{ui:SymbolIcon DocumentPdf24}" ToolTip="Export PDF" 
-                                               Command="{Binding ExportCommand}" Appearance="Secondary"/>
+                                <StackPanel Grid.Column="4" Orientation="Horizontal">
+                                    <ui:Button Icon="{ui:SymbolIcon Open24}" ToolTip="Open session folder" 
+                                               Command="{Binding DataContext.OpenSelectedSessionFolderCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                               Appearance="Secondary" Margin="0,0,4,0"/>
+                                    <ui:Button Icon="{ui:SymbolIcon DocumentPdf24}" ToolTip="Open PDF report"
+                                               Command="{Binding DataContext.OpenSelectedSessionReportCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                               Appearance="Secondary"
+                                               IsEnabled="{Binding HasReport}"/>
                                 </StackPanel>
                             </Grid>
                         </DataTemplate>

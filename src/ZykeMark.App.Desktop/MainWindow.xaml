@@ -127,11 +127,13 @@
                             <ui:Button Content="Start" Icon="{ui:SymbolIcon Play24}" 
                                        Command="{Binding StartCommand}" 
                                        Appearance="Primary" Margin="0,0,8,0"
-                                       ToolTip="Start Capture (Ctrl+Enter)"/>
+                                       ToolTip="{Binding StartButtonTooltip}"
+                                       ToolTipService.ShowOnDisabled="True"/>
                             <ui:Button Content="Stop" Icon="{ui:SymbolIcon Stop24}" 
                                        Command="{Binding EndCommand}" 
                                        Appearance="Danger" Margin="0,0,16,0"
-                                       ToolTip="Stop Capture (Ctrl+Enter)"/>
+                                       ToolTip="{Binding StopButtonTooltip}"
+                                       ToolTipService.ShowOnDisabled="True"/>
                             
                             <Border Background="{StaticResource ZykeSurfaceAltBrush}" CornerRadius="6" Padding="12,6" Margin="0,0,8,0">
                                 <StackPanel Orientation="Horizontal">
@@ -147,12 +149,14 @@
                             <StackPanel Margin="0,0,12,0">
                                 <TextBlock Text="Process" FontSize="10" Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,0,0,2"/>
                                 <ui:TextBox x:Name="ProcessNameTextBox" Width="180" PlaceholderText="Process name or PID..." 
-                                            Text="{Binding ProcessName, UpdateSourceTrigger=PropertyChanged}"/>
+                                            Text="{Binding ProcessName, UpdateSourceTrigger=PropertyChanged}"
+                                            IsEnabled="{Binding IsSessionRunning, Converter={StaticResource InverseBoolConverter}}"/>
                             </StackPanel>
                             <StackPanel Margin="0,0,12,0">
                                 <TextBlock Text="Build" FontSize="10" Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,0,0,2"/>
                                 <ui:TextBox Width="120" PlaceholderText="Build version..." 
-                                            Text="{Binding BuildVersion, UpdateSourceTrigger=PropertyChanged}"/>
+                                            Text="{Binding BuildVersion, UpdateSourceTrigger=PropertyChanged}"
+                                            IsEnabled="{Binding IsSessionRunning, Converter={StaticResource InverseBoolConverter}}"/>
                             </StackPanel>
                         </StackPanel>
 
@@ -160,9 +164,14 @@
                         <StackPanel Grid.Column="3" Orientation="Horizontal">
                             <ui:Button Icon="{ui:SymbolIcon DocumentPdf24}" Content="Export PDF" 
                                        Command="{Binding ExportPdfCommand}" 
-                                       ToolTip="Export PDF Report (Ctrl+E)" Margin="0,0,8,0"/>
+                                       ToolTip="{Binding ExportPdfTooltip}" 
+                                       ToolTipService.ShowOnDisabled="True"
+                                       Margin="0,0,8,0"/>
                             <ui:Button Icon="{ui:SymbolIcon Folder24}" Content="Open Folder" 
-                                       Command="{Binding OpenFolderCommand}" Margin="0,0,8,0"/>
+                                       Command="{Binding OpenFolderCommand}" 
+                                       ToolTip="{Binding OpenFolderTooltip}"
+                                       ToolTipService.ShowOnDisabled="True"
+                                       Margin="0,0,8,0"/>
                             <ui:Button Icon="{ui:SymbolIcon Copy24}" 
                                        Command="{Binding CopyErrorCommand}" 
                                        ToolTip="Copy Diagnostics"
