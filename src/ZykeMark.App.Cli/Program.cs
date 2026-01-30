@@ -180,7 +180,7 @@ switch (command)
             return;
         }
 
-        var summaryPath = sessionManager.StopSession(metadata.SessionId);
+        var summaryPath = sessionManager.StopSession(metadata.SessionId, collector.LastCollectionDataQuality);
         if (SummaryHasNoSamples(summaryPath))
         {
             Console.WriteLine("No samples collected for this session.");

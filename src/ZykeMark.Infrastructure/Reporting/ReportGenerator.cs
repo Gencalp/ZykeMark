@@ -152,6 +152,11 @@ public sealed class ReportGenerator
 
         var effectiveDurationMs = ResolveEffectiveDurationMs(aggregatesDurationMs, durationMs, startedAtUtc, endedAtUtc);
 
+        // Parse data quality section if present
+        var dataQuality = root.TryGetProperty("dataQuality", out var dataQualityProp)
+            ? ParseDataQuality(dataQualityProp)
+            : ReportDataQuality.Empty;
+
         return new ReportData(
             sessionId,
             startedAtUtc,
@@ -172,7 +177,43 @@ public sealed class ReportGenerator
             frameCount,
             avgCpuFrameTimeMs,
             avgGpuFrameTimeMs,
-            chunkStats);
+            chunkStats,
+            dataQuality);
+    }
+
+    private static ReportDataQuality ParseDataQuality(JsonElement dataQualityProp)
+    {
+        if (dataQualityProp.ValueKind == JsonValueKind.Null)
+        {
+            return ReportDataQuality.Empty;
+        }
+
+        int? etwEventsLostCount = null;
+        if (dataQualityProp.TryGetProperty("EtwEventsLostCount", out var etwCountProp)
+            && etwCountProp.ValueKind != JsonValueKind.Null)
+        {
+            etwEventsLostCount = etwCountProp.GetInt32();
+        }
+
+        var etwRiskLevel = dataQualityProp.TryGetProperty("EtwEventsLostRiskLevel", out var riskProp)
+            ? riskProp.GetString() ?? "Unknown"
+            : "Unknown";
+
+        var captureWarnings = new List<string>();
+        if (dataQualityProp.TryGetProperty("CaptureWarnings", out var warningsProp)
+            && warningsProp.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var warning in warningsProp.EnumerateArray())
+            {
+                var warningText = warning.GetString();
+                if (!string.IsNullOrEmpty(warningText))
+                {
+                    captureWarnings.Add(warningText);
+                }
+            }
+        }
+
+        return new ReportDataQuality(etwEventsLostCount, etwRiskLevel, captureWarnings);
     }
 
     private static RunConfig ParseRunConfig(JsonElement runConfigProp)
@@ -669,7 +710,24 @@ public sealed class ReportGenerator
             flags.Add(new InsightFlag("Desktop Capture Likely", "Game name suggests a desktop capture rather than a game process.", Severity.Info));
         }
 
-        return new ReportInsights(flags, desktopCaptureLikely);
+        // Add ETW event loss flag if detected
+        var etwRiskLevel = data.DataQuality.EtwEventsLostRiskLevel;
+        if (etwRiskLevel is "Low" or "Moderate" or "High" && data.DataQuality.EtwEventsLostCount.HasValue)
+        {
+            var count = data.DataQuality.EtwEventsLostCount.Value;
+            var severity = etwRiskLevel switch
+            {
+                "High" => Severity.High,
+                "Moderate" => Severity.Warning,
+                _ => Severity.Info
+            };
+            flags.Add(new InsightFlag(
+                "ETW Events Lost",
+                $"{count:N0} ETW events were lost during capture. Data may be incomplete.",
+                severity));
+        }
+
+        return new ReportInsights(flags, desktopCaptureLikely, etwRiskLevel);
     }
 
     private Verdict BuildVerdict(ReportData data, ReportInsights insights)
@@ -692,11 +750,24 @@ public sealed class ReportGenerator
             && !string.IsNullOrWhiteSpace(data.RunConfig.Resolution)
             && !string.IsNullOrWhiteSpace(data.RunConfig.Preset);
 
+        // Determine base confidence level
         var confidence = !hasAllConfig || insights.DesktopCaptureLikely
             ? "Low"
             : data.FrameCount < 300
                 ? "Medium"
                 : "High";
+
+        // Reduce confidence based on ETW event loss
+        // High ETW loss forces confidence to Low
+        // Moderate ETW loss caps confidence at Medium
+        if (insights.EtwRiskLevel == "High")
+        {
+            confidence = "Low";
+        }
+        else if (insights.EtwRiskLevel == "Moderate" && confidence == "High")
+        {
+            confidence = "Medium";
+        }
 
         var includeDetailsPage = data.FrameCount >= 2_000 || data.ChunkStats.StutterEvents100Ms >= 50;
 
@@ -772,7 +843,16 @@ public sealed class ReportGenerator
         int FrameCount,
         double? AvgCpuFrameTimeMs,
         double? AvgGpuFrameTimeMs,
-        ChunkStats ChunkStats);
+        ChunkStats ChunkStats,
+        ReportDataQuality DataQuality);
+
+    private sealed record ReportDataQuality(
+        int? EtwEventsLostCount,
+        string EtwEventsLostRiskLevel,
+        IReadOnlyList<string> CaptureWarnings)
+    {
+        public static ReportDataQuality Empty => new(null, "Unknown", Array.Empty<string>());
+    }
 
     private sealed record ChunkStats(
         int StutterEvents50Ms,
@@ -784,7 +864,7 @@ public sealed class ReportGenerator
         public bool HasData => StutterEvents50Ms > 0 || StutterEvents100Ms > 0 || WorstFrameTimeMs > 0;
     }
 
-    private sealed record ReportInsights(IReadOnlyList<InsightFlag> Flags, bool DesktopCaptureLikely);
+    private sealed record ReportInsights(IReadOnlyList<InsightFlag> Flags, bool DesktopCaptureLikely, string EtwRiskLevel);
 
     private sealed record InsightFlag(string Title, string Description, Severity Severity)
     {

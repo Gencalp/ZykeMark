@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace ZykeMark.Infrastructure.PresentMon;
 
@@ -139,6 +140,17 @@ public sealed class PresentMonRunner : IPresentMonRunner
         Log($"[PresentMon] stdout captured: {stdout.Length} chars");
         Log($"[PresentMon] stderr captured: {stderr.Length} chars");
 
+        // Parse ETW warnings from stdout/stderr
+        var (etwEventsLostCount, rawWarnings) = ParseEtwWarnings(stdout, stderr);
+        if (etwEventsLostCount.HasValue)
+        {
+            Log($"[PresentMon] ETW events lost detected: {etwEventsLostCount.Value}");
+        }
+        if (rawWarnings.Count > 0)
+        {
+            Log($"[PresentMon] Raw warnings: {string.Join("; ", rawWarnings)}");
+        }
+
         // Discover and validate output file if file mode was used
         string? actualCsvPath = null;
         if (useFileOutput && csvPath is not null)
@@ -146,7 +158,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
             actualCsvPath = DiscoverAndValidateCsvOutput(csvPath, exePath, exitCode, stdout, stderr);
         }
 
-        return new PresentMonRunResult(actualCsvPath, exitCode, stdout, stderr);
+        return new PresentMonRunResult(actualCsvPath, exitCode, stdout, stderr, etwEventsLostCount, rawWarnings);
     }
 
     /// <summary>
@@ -710,5 +722,58 @@ public sealed class PresentMonRunner : IPresentMonRunner
     private static string QuoteIfNeeded(string value)
     {
         return value.Contains(' ') ? $"\"{value}\"" : value;
+    }
+
+    /// <summary>
+    /// Parses stdout and stderr for ETW event loss warnings.
+    /// Recognizes patterns like "warning: 4651 ETW events were lost." (case-insensitive).
+    /// </summary>
+    /// <returns>A tuple of (EtwEventsLostCount, RawWarnings). Count is null if no ETW loss detected.</returns>
+    internal static (int? EtwEventsLostCount, IReadOnlyList<string> RawWarnings) ParseEtwWarnings(string stdout, string stderr)
+    {
+        var rawWarnings = new List<string>();
+        int? totalEtwEventsLost = null;
+
+        // Pattern matches: "warning: 4651 ETW events were lost." or just "ETW events were lost"
+        // Case-insensitive matching for the key phrase
+        var etwLostWithCountPattern = new Regex(
+            @"(?:warning:\s*)?(\d+)\s+ETW\s+events?\s+(?:(?:were|was)\s+)?lost",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // Fallback pattern for when count is not specified
+        var etwLostNoCountPattern = new Regex(
+            @"ETW\s+events?\s+(?:(?:were|was)\s+)?lost",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        var combined = stdout + Environment.NewLine + stderr;
+        var lines = combined.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var line in lines)
+        {
+            var matchWithCount = etwLostWithCountPattern.Match(line);
+            if (matchWithCount.Success)
+            {
+                if (int.TryParse(matchWithCount.Groups[1].Value, out var count))
+                {
+                    totalEtwEventsLost = (totalEtwEventsLost ?? 0) + count;
+                }
+                rawWarnings.Add(line.Trim());
+                continue;
+            }
+
+            // Check for ETW loss warning without a count
+            if (etwLostNoCountPattern.IsMatch(line))
+            {
+                // Mark as detected but with unknown count (use -1 to indicate "detected but unknown")
+                if (!totalEtwEventsLost.HasValue)
+                {
+                    // If we detected ETW loss but couldn't parse a count, use 1 as minimum
+                    totalEtwEventsLost = 1;
+                }
+                rawWarnings.Add(line.Trim());
+            }
+        }
+
+        return (totalEtwEventsLost, rawWarnings);
     }
 }

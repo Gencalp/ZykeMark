@@ -23,6 +23,7 @@ public sealed class SessionOrchestrationService : IDisposable
     private string? _sessionFolder;
     private string? _chunksFolder;
     private SessionMetadata? _sessionMetadata;
+    private DataQuality? _lastCollectionDataQuality;
 
     // Configuration for collector mode
     private readonly bool _useSimulatedMode;
@@ -141,6 +142,7 @@ public sealed class SessionOrchestrationService : IDisposable
                 _sessionFolder);
 
             var samples = await Task.Run(() => collector.Collect(duration), cancellationToken);
+            _lastCollectionDataQuality = collector.LastCollectionDataQuality;
             _logger.Log($"PresentMon collection complete: {samples.Count} samples");
 
             return samples;
@@ -161,7 +163,8 @@ public sealed class SessionOrchestrationService : IDisposable
             _simulatedCollector?.Stop();
             _simulatedCollector = null;
             StopWatcher();
-            var summaryPath = _sessionManager.StopSession(_sessionId);
+            var summaryPath = _sessionManager.StopSession(_sessionId, _lastCollectionDataQuality);
+            _lastCollectionDataQuality = null; // Clear after use
 
             _logger.Log($"Session stopped: {_sessionId}");
             _logger.Log($"Summary: {summaryPath}");

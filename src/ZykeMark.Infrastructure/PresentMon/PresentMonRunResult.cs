@@ -7,8 +7,12 @@ namespace ZykeMark.Infrastructure.PresentMon;
 /// <param name="ExitCode">The exit code of the PresentMon process.</param>
 /// <param name="StdOut">The standard output captured from PresentMon.</param>
 /// <param name="StdErr">The standard error captured from PresentMon.</param>
+/// <param name="EtwEventsLostCount">The number of ETW events lost during capture, if detected. Null if not detected.</param>
+/// <param name="RawWarnings">List of raw warning strings detected in stdout/stderr.</param>
 public sealed record PresentMonRunResult(
     string? CsvPath,
     int ExitCode,
     string StdOut,
-    string StdErr);
+    string StdErr,
+    int? EtwEventsLostCount = null,
+    IReadOnlyList<string>? RawWarnings = null);

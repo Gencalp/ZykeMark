@@ -20,6 +20,12 @@ public sealed class PresentMonCollector : ICollector
     private readonly PresentMonRunOptions _runOptions;
     private readonly Action<string>? _logger;
 
+    /// <summary>
+    /// Gets the data quality information from the last collection run.
+    /// Available after calling <see cref="Collect"/>.
+    /// </summary>
+    public DataQuality? LastCollectionDataQuality { get; private set; }
+
     public PresentMonCollector(
         ILocalStore localStore,
         string sessionId,
@@ -82,6 +88,16 @@ public sealed class PresentMonCollector : ICollector
 
         // Run PresentMon to file and get the result
         var result = _runner.RunToFileAsync(runOptions, cts.Token).GetAwaiter().GetResult();
+
+        // Capture data quality from the run result
+        LastCollectionDataQuality = DataQuality.Create(
+            result.EtwEventsLostCount,
+            result.RawWarnings?.ToList());
+
+        if (result.EtwEventsLostCount.HasValue)
+        {
+            Log($"[Collector] ETW events lost: {result.EtwEventsLostCount.Value}, Risk level: {LastCollectionDataQuality.EtwEventsLostRiskLevel}");
+        }
 
         // Validate we got a CSV path
         if (string.IsNullOrWhiteSpace(result.CsvPath))
@@ -230,6 +246,10 @@ public sealed class PresentMonCollector : ICollector
     /// </summary>
     private IReadOnlyList<FrameSample> CollectFromStdout(TimeSpan duration, PresentMonRunOptions runOptions)
     {
+        // Stdout mode doesn't capture ETW loss info (it's in stderr which we don't parse in streaming mode)
+        // Set to empty/unknown
+        LastCollectionDataQuality = DataQuality.Empty;
+
         var samples = new List<FrameSample>();
         var chunkSamples = new List<FrameSample>();
         double chunkStartTimestampMs = 0;

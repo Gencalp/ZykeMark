@@ -37,7 +37,7 @@ public sealed class SessionManager : ISessionManager
         return metadata;
     }
 
-    public string StopSession(string? sessionId = null)
+    public string StopSession(string? sessionId = null, DataQuality? dataQuality = null)
     {
         var resolvedSessionId = sessionId ?? _currentSession?.SessionId;
 
@@ -73,10 +73,19 @@ public sealed class SessionManager : ISessionManager
                 AvgGpuFrameTimeMs: null)
             : _aggregator.Aggregate(samples);
 
+        // Use provided data quality or create empty/unknown if not provided
+        var effectiveDataQuality = dataQuality ?? DataQuality.Empty;
+
         var summaryPayload = new
         {
             metadata = updatedMetadata,
-            aggregates
+            aggregates,
+            dataQuality = new
+            {
+                EtwEventsLostCount = effectiveDataQuality.EtwEventsLostCount,
+                EtwEventsLostRiskLevel = effectiveDataQuality.EtwEventsLostRiskLevel.ToString(),
+                CaptureWarnings = effectiveDataQuality.CaptureWarnings
+            }
         };
 
         var summaryPath = _localStore.WriteSummary(resolvedSessionId, summaryPayload);
