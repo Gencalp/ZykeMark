@@ -15,6 +15,7 @@
       <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
       <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
       <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter" />
+      <converters:HasReportToTooltipConverter x:Key="HasReportToTooltipConverter" />
       
       <!-- Brand Colors -->
       <SolidColorBrush x:Key="ZykePrimaryBrush" Color="#6B1FAD" />

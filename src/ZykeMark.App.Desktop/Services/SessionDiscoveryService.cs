@@ -168,7 +168,19 @@ public sealed record SessionListItem(
     string? EtwRiskLevel,
     bool HasReport)
 {
-    public string StartDateDisplay => StartedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+    /// <summary>
+    /// Display date in user's locale format (e.g., dd/MM/yyyy HH:mm for tr-TR).
+    /// </summary>
+    public string StartDateDisplay
+    {
+        get
+        {
+            var localTime = StartedAtUtc.ToLocalTime();
+            // Use short date + short time patterns from current culture
+            // This respects user locale: dd/MM/yyyy HH:mm for tr-TR, MM/dd/yyyy hh:mm for en-US, etc.
+            return localTime.ToString("g"); // General date/time (short)
+        }
+    }
 
     public string DurationDisplay
     {

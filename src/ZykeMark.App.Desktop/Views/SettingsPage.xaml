@@ -151,10 +151,10 @@
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="Theme" FontWeight="SemiBold"
                                        Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
-                            <TextBlock Text="Application color theme" FontSize="12"
+                            <TextBlock Text="Application color theme (applies immediately)" FontSize="12"
                                        Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
                         </StackPanel>
-                        <ComboBox Grid.Column="1" SelectedIndex="0">
+                        <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedThemeIndex}">
                             <ComboBoxItem Content="Dark"/>
                             <ComboBoxItem Content="Light"/>
                             <ComboBoxItem Content="System"/>
