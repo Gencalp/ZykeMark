@@ -245,4 +245,63 @@ public class PresentMonCollectorTests
 
         sessionManager.StopSession(metadata.SessionId);
     }
+
+    [Fact]
+    public void Collector_CapturesEtwLossFromRunner_AndSessionManagerPersistsToSummary()
+    {
+        // Integration test: Verify that ETW event loss detected in PresentMonRunner
+        // flows through the collector and is persisted in summary.json
+        var baseDir = Path.Combine(Path.GetTempPath(), "ZykeMarkTests", Guid.NewGuid().ToString("N"));
+        var store = new FileSystemLocalStore(baseDir);
+        var sessionManager = new SessionManager(store, new ZykeMarkAggregator());
+        var metadata = sessionManager.StartSession("RealGame", "1.0.0", new RunConfig());
+
+        var sessionFolder = Path.Combine(baseDir, metadata.SessionId);
+        var csvPath = Path.Combine(sessionFolder, "presentmon.csv");
+
+        // CSV with valid data
+        var csvLines = new[]
+        {
+            "Application,ProcessID,SwapChainAddress,Runtime,CPUStartTime,FrameTime,MsCPUBusy,MsGPUTime",
+            "MyGame.exe,4242,0x1,DXGI,1000.0,16.67,5.2,6.1",
+            "MyGame.exe,4242,0x1,DXGI,1016.67,16.67,5.1,6.0",
+            "MyGame.exe,4242,0x1,DXGI,1033.34,16.67,5.0,5.9"
+        };
+
+        // Simulate ETW loss with 5000 events lost (Moderate risk level)
+        var rawWarnings = new List<string> { "warning: 5000 ETW events were lost." };
+        var runner = new FakePresentMonRunner(csvLines, csvPath, etwEventsLostCount: 5000, rawWarnings: rawWarnings);
+        var parser = new PresentMonCsvParser();
+        var runOptions = new PresentMonRunOptions("PresentMon.exe", "MyGame.exe", null, 1);
+
+        var collector = new PresentMonCollector(
+            store,
+            metadata.SessionId,
+            metadata.StartedAtUtc,
+            runner,
+            parser,
+            runOptions,
+            sessionFolder: sessionFolder);
+
+        var samples = collector.Collect(TimeSpan.FromSeconds(1));
+
+        // Verify collector captured the data quality info
+        Assert.NotNull(collector.LastCollectionDataQuality);
+        Assert.Equal(5000, collector.LastCollectionDataQuality.EtwEventsLostCount);
+        Assert.Equal(EtwRiskLevel.Moderate, collector.LastCollectionDataQuality.EtwEventsLostRiskLevel);
+        Assert.Single(collector.LastCollectionDataQuality.CaptureWarnings);
+
+        // Stop session and pass the data quality to persist it
+        var summaryPath = sessionManager.StopSession(metadata.SessionId, collector.LastCollectionDataQuality);
+
+        // Verify data quality is persisted in summary.json
+        using var summaryStream = File.OpenRead(summaryPath);
+        using var document = JsonDocument.Parse(summaryStream);
+        var root = document.RootElement;
+
+        Assert.True(root.TryGetProperty("dataQuality", out var dataQuality));
+        Assert.Equal(5000, dataQuality.GetProperty("EtwEventsLostCount").GetInt32());
+        Assert.Equal("Moderate", dataQuality.GetProperty("EtwEventsLostRiskLevel").GetString());
+        Assert.True(dataQuality.GetProperty("CaptureWarnings").GetArrayLength() == 1);
+    }
 }
