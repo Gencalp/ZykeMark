@@ -28,7 +28,7 @@
                                    Foreground="{StaticResource ZykeTextSecondaryBrush}" TextWrapping="Wrap"/>
                     </StackPanel>
                 </ui:CardAction>
-                <ui:CardAction Margin="4,0" Command="{Binding RefreshSessionsCommand}" IsChevronVisible="False">
+                <ui:CardAction Margin="4,0" Command="{Binding NavigateToSessionsCommand}" IsChevronVisible="False">
                     <StackPanel>
                         <ui:SymbolIcon Symbol="History24" FontSize="24" Foreground="{StaticResource ZykeAccentBrush}"/>
                         <TextBlock Text="View Sessions" FontWeight="SemiBold" Margin="0,8,0,4"

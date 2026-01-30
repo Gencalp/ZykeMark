@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -20,11 +22,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private static readonly SolidColorBrush SuccessBrush = new(Color.FromRgb(76, 175, 80));
     private static readonly SolidColorBrush PrimaryBrush = new(Color.FromRgb(107, 31, 173));
     private static readonly SolidColorBrush NeutralBrush = new(Color.FromRgb(61, 61, 61));
+    private static readonly SolidColorBrush WarningBrush = new(Color.FromRgb(255, 152, 0));
 
     private readonly SessionOrchestrationService _service;
     private readonly SessionDiscoveryService _discoveryService;
     private readonly DispatcherTimer _durationTimer;
+    private readonly DispatcherTimer _countdownTimer;
     private readonly List<FrameSample> _samples = new();
+    private readonly List<FrameSample> _pausedSamples = new(); // Samples collected before pause
     private SessionMetadata? _metadata;
     private DateTime? _startUtc;
     private SessionState _state = SessionState.Idle;
@@ -36,8 +41,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _sessionSearchQuery = string.Empty;
     private SessionListItem? _selectedSession;
     private IReadOnlyList<SessionListItem> _allSessions = Array.Empty<SessionListItem>();
+    private int _countdownSeconds;
+    private int? _selectedProcessId;
+    private ProcessInfo? _selectedProcess;
+    private int _selectedSortIndex;
+    private string _selectedTheme = "Dark";
+    private CancellationTokenSource? _countdownCts;
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>
+    /// Fired when navigation is requested. The MainWindow subscribes to this.
+    /// </summary>
+    public event Action<string>? NavigationRequested;
 
     public MainWindowViewModel()
     {
@@ -49,20 +65,34 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         _durationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _durationTimer.Tick += (_, _) => UpdateDuration();
 
-        Sessions = new ObservableCollection<SessionListItem>();
+        _countdownTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _countdownTimer.Tick += OnCountdownTick;
 
-        StartCommand = new RelayCommand(StartSession, () => State is SessionState.Idle or SessionState.Completed or SessionState.Error);
-        EndCommand = new RelayCommand(EndSession, () => State == SessionState.Running);
+        Sessions = new ObservableCollection<SessionListItem>();
+        RunningProcesses = new ObservableCollection<ProcessInfo>();
+
+        // Commands
+        StartCommand = new RelayCommand(StartSessionWithCountdown, CanStartSession);
+        EndCommand = new RelayCommand(EndSession, CanEndSession);
+        PauseCommand = new RelayCommand(PauseSession, () => State == SessionState.Running);
+        ResumeCommand = new RelayCommand(ResumeSession, () => State == SessionState.Paused);
         ToggleSessionCommand = new RelayCommand(ToggleSession, () => true);
         ExportPdfCommand = new RelayCommand(ExportPdf, () => !string.IsNullOrWhiteSpace(SessionFolder));
         OpenFolderCommand = new RelayCommand(() => _service.OpenSessionFolder(), () => !string.IsNullOrWhiteSpace(SessionFolder));
         CopyErrorCommand = new RelayCommand(CopyErrorDetails, () => !string.IsNullOrWhiteSpace(LastError));
-        RefreshSessionsCommand = new RelayCommand(RefreshSessions, () => true);
+        RefreshSessionsCommand = new RelayCommand(RescanSessions, () => true);
+        ResetFiltersCommand = new RelayCommand(ResetFilters, () => true);
         BrowsePresentMonPathCommand = new RelayCommand(BrowsePresentMonPath, () => true);
         ValidatePresentMonPathCommand = new RelayCommand(ValidatePresentMonPath, () => true);
         OpenSelectedSessionFolderCommand = new RelayCommand(OpenSelectedSessionFolder, () => SelectedSession is not null);
         OpenSelectedSessionReportCommand = new RelayCommand(OpenSelectedSessionReport, () => SelectedSession?.HasReport == true);
         OpenLastSessionFolderCommand = new RelayCommand(OpenLastSessionFolder, () => HasSessions);
+        NavigateToSessionsCommand = new RelayCommand(() => NavigationRequested?.Invoke("Sessions"), () => true);
+        NavigateToLiveSessionCommand = new RelayCommand(() => NavigationRequested?.Invoke("LiveSession"), () => true);
+        RefreshProcessListCommand = new RelayCommand(RefreshProcessList, () => true);
+        ApplyThemeCommand = new RelayCommand(ApplyTheme, () => true);
+        OpenSessionFolderForItemCommand = new RelayCommand<SessionListItem>(OpenSessionFolderForItem, _ => true);
+        OpenSessionReportForItemCommand = new RelayCommand<SessionListItem>(OpenSessionReportForItem, item => item?.HasReport == true);
 
         StatusText = "Idle";
         DurationText = "00:00:00";
@@ -72,24 +102,38 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         DataQualityOutlierRisk = "Low";
         DataQualityWarnings = "None";
 
-        // Initial session discovery
+        // Load saved settings
+        LoadSettings();
+
+        // Initial data loads
         RefreshSessions();
+        RefreshProcessList();
     }
 
     public RelayCommand StartCommand { get; }
     public RelayCommand EndCommand { get; }
+    public RelayCommand PauseCommand { get; }
+    public RelayCommand ResumeCommand { get; }
     public RelayCommand ToggleSessionCommand { get; }
     public RelayCommand ExportPdfCommand { get; }
     public RelayCommand OpenFolderCommand { get; }
     public RelayCommand CopyErrorCommand { get; }
     public RelayCommand RefreshSessionsCommand { get; }
+    public RelayCommand ResetFiltersCommand { get; }
     public RelayCommand BrowsePresentMonPathCommand { get; }
     public RelayCommand ValidatePresentMonPathCommand { get; }
     public RelayCommand OpenSelectedSessionFolderCommand { get; }
     public RelayCommand OpenSelectedSessionReportCommand { get; }
     public RelayCommand OpenLastSessionFolderCommand { get; }
+    public RelayCommand NavigateToSessionsCommand { get; }
+    public RelayCommand NavigateToLiveSessionCommand { get; }
+    public RelayCommand RefreshProcessListCommand { get; }
+    public RelayCommand ApplyThemeCommand { get; }
+    public RelayCommand<SessionListItem> OpenSessionFolderForItemCommand { get; }
+    public RelayCommand<SessionListItem> OpenSessionReportForItemCommand { get; }
 
     public ObservableCollection<SessionListItem> Sessions { get; }
+    public ObservableCollection<ProcessInfo> RunningProcesses { get; }
 
     public SessionListItem? SelectedSession
     {
@@ -230,6 +274,95 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public Brush PresentMonValidationBrush { get; private set; } = SuccessBrush;
     public Wpf.Ui.Controls.SymbolRegular PresentMonValidationIcon { get; private set; } = Wpf.Ui.Controls.SymbolRegular.CheckmarkCircle24;
 
+    // Process selection
+    public ProcessInfo? SelectedProcess
+    {
+        get => _selectedProcess;
+        set
+        {
+            if (SetField(ref _selectedProcess, value))
+            {
+                if (value is not null)
+                {
+                    _selectedProcessId = value.ProcessId;
+                    ProcessName = value.DisplayName;
+                }
+                else
+                {
+                    _selectedProcessId = null;
+                }
+                OnPropertyChanged(nameof(IsProcessValid));
+                OnPropertyChanged(nameof(ProcessValidationMessage));
+                StartCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool IsProcessValid => _selectedProcessId.HasValue || !string.IsNullOrWhiteSpace(ProcessName);
+    public string ProcessValidationMessage => IsProcessValid
+        ? ""
+        : "Select a running process or enter a process name/PID to start capture.";
+
+    // Countdown
+    public int CountdownSeconds
+    {
+        get => _countdownSeconds;
+        private set
+        {
+            if (SetField(ref _countdownSeconds, value))
+            {
+                OnPropertyChanged(nameof(CountdownText));
+                OnPropertyChanged(nameof(IsCountdownActive));
+            }
+        }
+    }
+
+    public string CountdownText => IsCountdownActive ? $"Starting in {CountdownSeconds}..." : "";
+    public bool IsCountdownActive => State == SessionState.Countdown && CountdownSeconds > 0;
+    public bool IsSessionPaused => State == SessionState.Paused;
+
+    // Sort and filter
+    public int SelectedSortIndex
+    {
+        get => _selectedSortIndex;
+        set
+        {
+            if (SetField(ref _selectedSortIndex, value))
+            {
+                ApplySortAndFilter();
+            }
+        }
+    }
+
+    // Theme
+    public string SelectedTheme
+    {
+        get => _selectedTheme;
+        set
+        {
+            if (SetField(ref _selectedTheme, value))
+            {
+                ApplyTheme();
+            }
+        }
+    }
+
+    public int SelectedThemeIndex
+    {
+        get => _selectedTheme switch { "Dark" => 0, "Light" => 1, "System" => 2, _ => 0 };
+        set
+        {
+            var theme = value switch { 0 => "Dark", 1 => "Light", 2 => "System", _ => "Dark" };
+            if (_selectedTheme != theme)
+            {
+                _selectedTheme = theme;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(SelectedTheme));
+                ApplyTheme();
+            }
+        }
+    }
+
     private SessionState State
     {
         get => _state;
@@ -240,10 +373,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 UpdateStatus();
                 StartCommand.RaiseCanExecuteChanged();
                 EndCommand.RaiseCanExecuteChanged();
+                PauseCommand.RaiseCanExecuteChanged();
+                ResumeCommand.RaiseCanExecuteChanged();
                 ToggleSessionCommand.RaiseCanExecuteChanged();
                 ExportPdfCommand.RaiseCanExecuteChanged();
                 OpenFolderCommand.RaiseCanExecuteChanged();
                 OnPropertyChanged(nameof(IsSessionRunning));
+                OnPropertyChanged(nameof(IsSessionPaused));
+                OnPropertyChanged(nameof(IsCountdownActive));
+                OnPropertyChanged(nameof(CountdownText));
                 OnPropertyChanged(nameof(SessionStateBadgeBackground));
                 OnPropertyChanged(nameof(StatusBannerBackground));
                 OnPropertyChanged(nameof(StartButtonTooltip));
@@ -254,15 +392,65 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    private bool CanStartSession()
+    {
+        // Can only start when idle/completed/error AND have a valid process
+        var stateOk = State is SessionState.Idle or SessionState.Completed or SessionState.Error;
+        var processOk = _selectedProcessId.HasValue || !string.IsNullOrWhiteSpace(ProcessName);
+        return stateOk && processOk;
+    }
+
+    private bool CanEndSession()
+    {
+        return State is SessionState.Running or SessionState.Paused or SessionState.Countdown;
+    }
+
     private void ToggleSession()
     {
-        if (State == SessionState.Running)
+        if (State == SessionState.Running || State == SessionState.Countdown || State == SessionState.Paused)
         {
             EndSession();
         }
         else if (State is SessionState.Idle or SessionState.Completed or SessionState.Error)
         {
+            StartSessionWithCountdown();
+        }
+    }
+
+    private void StartSessionWithCountdown()
+    {
+        if (!CanStartSession())
+        {
+            StatusMessage = ProcessValidationMessage;
+            return;
+        }
+
+        _countdownCts?.Cancel();
+        _countdownCts = new CancellationTokenSource();
+        CountdownSeconds = 5;
+        State = SessionState.Countdown;
+        StatusMessage = "Session starting in 5 seconds...";
+        _countdownTimer.Start();
+    }
+
+    private void OnCountdownTick(object? sender, EventArgs e)
+    {
+        if (_countdownCts?.IsCancellationRequested == true)
+        {
+            _countdownTimer.Stop();
+            return;
+        }
+
+        CountdownSeconds--;
+
+        if (CountdownSeconds <= 0)
+        {
+            _countdownTimer.Stop();
             StartSession();
+        }
+        else
+        {
+            StatusMessage = $"Session starting in {CountdownSeconds} seconds...";
         }
     }
 
@@ -272,6 +460,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             State = SessionState.Running;
             _samples.Clear();
+            _pausedSamples.Clear();
             _metadata = _service.StartSession(ProcessName, BuildVersion, new RunConfig());
             _startUtc = DateTime.UtcNow;
             _durationTimer.Start();
@@ -285,14 +474,83 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    private void EndSession()
+    private void PauseSession()
     {
+        if (State != SessionState.Running)
+        {
+            return;
+        }
+
         try
         {
+            // Save current samples to pause buffer
+            _pausedSamples.AddRange(_samples);
+            _samples.Clear();
+
+            _durationTimer.Stop();
+            State = SessionState.Paused;
+            StatusMessage = "Session paused. Click Resume to continue.";
+        }
+        catch (Exception ex)
+        {
+            HandleError("Failed to pause session.", ex);
+        }
+    }
+
+    private void ResumeSession()
+    {
+        if (State != SessionState.Paused)
+        {
+            return;
+        }
+
+        try
+        {
+            // Restore paused samples
+            _samples.AddRange(_pausedSamples);
+            _pausedSamples.Clear();
+
+            _durationTimer.Start();
+            State = SessionState.Running;
+            StatusMessage = "Session resumed.";
+        }
+        catch (Exception ex)
+        {
+            HandleError("Failed to resume session.", ex);
+        }
+    }
+
+    private void EndSession()
+    {
+        // Cancel countdown if active
+        _countdownCts?.Cancel();
+        _countdownTimer.Stop();
+
+        if (State == SessionState.Countdown)
+        {
+            State = SessionState.Idle;
+            CountdownSeconds = 0;
+            StatusMessage = "Session cancelled.";
+            return;
+        }
+
+        try
+        {
+            // Merge paused samples back if any
+            if (_pausedSamples.Count > 0)
+            {
+                _samples.InsertRange(0, _pausedSamples);
+                _pausedSamples.Clear();
+            }
+
             State = SessionState.Ending;
             _service.StopSession();
             _durationTimer.Stop();
-            UpdateDuration();
+
+            // Reset timer display
+            DurationText = "00:00:00";
+            OnPropertyChanged(nameof(DurationText));
+
             State = SessionState.Completed;
             StatusMessage = "Session ended.";
 
@@ -384,22 +642,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             // Cache all sessions for efficient filtering
             _allSessions = _discoveryService.DiscoverSessions();
-            Sessions.Clear();
 
-            foreach (var session in _allSessions)
-            {
-                Sessions.Add(session);
-            }
+            // Apply current sort and filter
+            ApplySortAndFilter();
 
             // Update last session summary for Dashboard (uses _allSessions which is sorted by date descending)
             UpdateLastSessionSummary();
 
-            OnPropertyChanged(nameof(HasNoSessions));
-            OnPropertyChanged(nameof(HasSessions));
             OpenLastSessionFolderCommand.RaiseCanExecuteChanged();
-            StatusMessage = Sessions.Count > 0
-                ? $"Found {Sessions.Count} session(s)."
-                : "No sessions found.";
         }
         catch (Exception ex)
         {
@@ -434,31 +684,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void FilterSessions()
     {
-        // Filter from cached session list (avoids disk I/O on every keystroke)
-        try
-        {
-            Sessions.Clear();
-
-            var query = SessionSearchQuery?.Trim().ToLowerInvariant();
-            var filtered = string.IsNullOrEmpty(query)
-                ? _allSessions
-                : _allSessions.Where(s =>
-                    (s.GameName?.ToLowerInvariant().Contains(query) == true) ||
-                    (s.BuildVersion?.ToLowerInvariant().Contains(query) == true) ||
-                    (s.SessionId?.ToLowerInvariant().Contains(query) == true));
-
-            foreach (var session in filtered)
-            {
-                Sessions.Add(session);
-            }
-
-            OnPropertyChanged(nameof(HasNoSessions));
-            OnPropertyChanged(nameof(HasSessions));
-        }
-        catch
-        {
-            // Ignore filter errors
-        }
+        // Use the unified sort and filter method
+        ApplySortAndFilter();
     }
 
     private void OpenSelectedSessionFolder()
@@ -587,6 +814,57 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(PresentMonValidationIcon));
     }
 
+    private void OpenSessionFolderForItem(SessionListItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = item.SessionFolder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            HandleError("Failed to open session folder.", ex);
+        }
+    }
+
+    private void OpenSessionReportForItem(SessionListItem? item)
+    {
+        if (item is null || !item.HasReport)
+        {
+            StatusMessage = "No PDF report available for this session.";
+            return;
+        }
+
+        try
+        {
+            var reportPath = Path.Combine(item.SessionFolder, "report.pdf");
+            if (File.Exists(reportPath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = reportPath,
+                    UseShellExecute = true
+                });
+            }
+            else
+            {
+                StatusMessage = "PDF report file not found.";
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleError("Failed to open report.", ex);
+        }
+    }
+
     private void OnChunkReceived(object? sender, RawSampleChunk chunk)
     {
         Application.Current.Dispatcher.Invoke(() =>
@@ -662,7 +940,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         StatusText = State switch
         {
             SessionState.Idle => "Idle",
+            SessionState.Countdown => "Starting...",
             SessionState.Running => "Running",
+            SessionState.Paused => "Paused",
             SessionState.Ending => "Ending",
             SessionState.Completed => "Completed",
             SessionState.Error => "Error",
@@ -709,6 +989,208 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         return "Balanced";
     }
 
+    private void RefreshProcessList()
+    {
+        try
+        {
+            RunningProcesses.Clear();
+            var processes = Process.GetProcesses()
+                .Where(p =>
+                {
+                    try
+                    {
+                        // Filter to processes with main windows (top-level apps)
+                        return p.MainWindowHandle != IntPtr.Zero && !string.IsNullOrWhiteSpace(p.MainWindowTitle);
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                })
+                .OrderBy(p => p.ProcessName)
+                .Take(100); // Limit for performance
+
+            foreach (var proc in processes)
+            {
+                try
+                {
+                    RunningProcesses.Add(new ProcessInfo(
+                        proc.Id,
+                        proc.ProcessName,
+                        proc.MainWindowTitle));
+                }
+                catch
+                {
+                    // Skip inaccessible processes
+                }
+            }
+
+            StatusMessage = $"Found {RunningProcesses.Count} running applications.";
+        }
+        catch (Exception ex)
+        {
+            HandleError("Failed to refresh process list.", ex);
+        }
+    }
+
+    private void RescanSessions()
+    {
+        RefreshSessions();
+    }
+
+    private void ResetFilters()
+    {
+        // Reset search query
+        _sessionSearchQuery = "";
+        OnPropertyChanged(nameof(SessionSearchQuery));
+
+        // Reset sort to default (Date desc = index 0)
+        _selectedSortIndex = 0;
+        OnPropertyChanged(nameof(SelectedSortIndex));
+
+        // Reload sessions with defaults
+        Sessions.Clear();
+        foreach (var session in _allSessions)
+        {
+            Sessions.Add(session);
+        }
+
+        OnPropertyChanged(nameof(HasNoSessions));
+        OnPropertyChanged(nameof(HasSessions));
+        StatusMessage = $"Filters reset. Showing {Sessions.Count} session(s).";
+    }
+
+    private void ApplySortAndFilter()
+    {
+        try
+        {
+            var query = SessionSearchQuery?.Trim().ToLowerInvariant();
+
+            // Filter first
+            var filtered = string.IsNullOrEmpty(query)
+                ? _allSessions.ToList()
+                : _allSessions.Where(s =>
+                    (s.GameName?.ToLowerInvariant().Contains(query) == true) ||
+                    (s.BuildVersion?.ToLowerInvariant().Contains(query) == true) ||
+                    (s.SessionId?.ToLowerInvariant().Contains(query) == true)).ToList();
+
+            // Then sort based on selected index
+            IEnumerable<SessionListItem> sorted = SelectedSortIndex switch
+            {
+                0 => filtered.OrderByDescending(s => s.StartedAtUtc), // Date desc (default)
+                1 => filtered.OrderBy(s => s.StartedAtUtc),           // Date asc
+                2 => filtered.OrderByDescending(s => s.AvgFps ?? 0),  // Avg FPS desc
+                3 => filtered.OrderBy(s => s.AvgFps ?? 0),            // Avg FPS asc
+                4 => filtered.OrderByDescending(s => s.DurationMs ?? 0), // Duration desc
+                5 => filtered.OrderBy(s => s.DurationMs ?? 0),        // Duration asc
+                _ => filtered.OrderByDescending(s => s.StartedAtUtc)
+            };
+
+            Sessions.Clear();
+            foreach (var session in sorted)
+            {
+                Sessions.Add(session);
+            }
+
+            OnPropertyChanged(nameof(HasNoSessions));
+            OnPropertyChanged(nameof(HasSessions));
+            StatusMessage = $"Found {Sessions.Count} session(s).";
+        }
+        catch
+        {
+            // Ignore sort/filter errors
+        }
+    }
+
+    private void ApplyTheme()
+    {
+        try
+        {
+            Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
+                SelectedTheme switch
+                {
+                    "Light" => Wpf.Ui.Appearance.ApplicationTheme.Light,
+                    "System" => Wpf.Ui.Appearance.ApplicationTheme.Unknown, // Let system decide
+                    _ => Wpf.Ui.Appearance.ApplicationTheme.Dark
+                });
+
+            SaveSettings();
+            StatusMessage = $"Theme changed to {SelectedTheme}.";
+        }
+        catch (Exception ex)
+        {
+            HandleError("Failed to apply theme.", ex);
+        }
+    }
+
+    private void LoadSettings()
+    {
+        try
+        {
+            var settingsPath = GetSettingsPath();
+            if (File.Exists(settingsPath))
+            {
+                var json = File.ReadAllText(settingsPath);
+                var settings = JsonSerializer.Deserialize<AppSettings>(json);
+                if (settings is not null)
+                {
+                    _selectedTheme = settings.Theme ?? "Dark";
+                    _presentMonPath = settings.PresentMonPath ?? "";
+                    OnPropertyChanged(nameof(SelectedTheme));
+                    OnPropertyChanged(nameof(SelectedThemeIndex));
+                    OnPropertyChanged(nameof(PresentMonPath));
+
+                    // Apply theme on load
+                    Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
+                        _selectedTheme switch
+                        {
+                            "Light" => Wpf.Ui.Appearance.ApplicationTheme.Light,
+                            "System" => Wpf.Ui.Appearance.ApplicationTheme.Unknown,
+                            _ => Wpf.Ui.Appearance.ApplicationTheme.Dark
+                        });
+                }
+            }
+        }
+        catch
+        {
+            // Ignore settings load errors
+        }
+    }
+
+    private void SaveSettings()
+    {
+        try
+        {
+            var settingsPath = GetSettingsPath();
+            var settingsDir = Path.GetDirectoryName(settingsPath);
+            if (!string.IsNullOrEmpty(settingsDir))
+            {
+                Directory.CreateDirectory(settingsDir);
+            }
+
+            var settings = new AppSettings
+            {
+                Theme = _selectedTheme,
+                PresentMonPath = _presentMonPath
+            };
+
+            var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(settingsPath, json);
+        }
+        catch
+        {
+            // Ignore settings save errors
+        }
+    }
+
+    private static string GetSettingsPath()
+    {
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ZykeMark",
+            "settings.json");
+    }
+
     private void HandleError(string message, Exception ex)
     {
         LastError = ex.ToString();
@@ -737,8 +1219,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 public enum SessionState
 {
     Idle,
+    Countdown,
     Running,
+    Paused,
     Ending,
     Completed,
     Error
+}
+
+/// <summary>
+/// Represents a running process for the process selector.
+/// </summary>
+public sealed record ProcessInfo(int ProcessId, string ProcessName, string WindowTitle)
+{
+    public string DisplayName => $"{ProcessName} (PID {ProcessId})";
+    public string FullDisplayName => string.IsNullOrWhiteSpace(WindowTitle)
+        ? DisplayName
+        : $"{ProcessName} - {WindowTitle} (PID {ProcessId})";
+}
+
+/// <summary>
+/// App settings for persistence.
+/// </summary>
+public sealed class AppSettings
+{
+    public string? Theme { get; set; }
+    public string? PresentMonPath { get; set; }
 }

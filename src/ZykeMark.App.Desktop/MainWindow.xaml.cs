@@ -14,7 +14,10 @@ public partial class MainWindow : FluentWindow
         InitializeComponent();
         _viewModel = new MainWindowViewModel();
         DataContext = _viewModel;
-        
+
+        // Subscribe to navigation requests from ViewModel
+        _viewModel.NavigationRequested += OnNavigationRequested;
+
         Loaded += MainWindow_Loaded;
     }
 
@@ -22,6 +25,25 @@ public partial class MainWindow : FluentWindow
     {
         // Navigate to Dashboard by default
         NavigateTo<DashboardPage>(NavDashboard);
+    }
+
+    private void OnNavigationRequested(string pageName)
+    {
+        switch (pageName)
+        {
+            case "Dashboard":
+                NavigateTo<DashboardPage>(NavDashboard);
+                break;
+            case "LiveSession":
+                NavigateTo<LiveSessionPage>(NavLiveSession);
+                break;
+            case "Sessions":
+                NavigateTo<SessionsPage>(NavSessions);
+                break;
+            case "Settings":
+                NavigateTo<SettingsPage>(NavSettings);
+                break;
+        }
     }
 
     private void NavigateTo<T>(Button navButton) where T : System.Windows.Controls.Page, new()

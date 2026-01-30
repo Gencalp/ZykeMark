@@ -26,17 +26,26 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <ui:TextBox Grid.Column="0" PlaceholderText="Search by game, build, or session ID..." 
                         Icon="{ui:SymbolIcon Search24}" MaxWidth="400" HorizontalAlignment="Left"
                         Text="{Binding SessionSearchQuery, UpdateSourceTrigger=PropertyChanged}"/>
-            <ComboBox Grid.Column="1" Width="150" Margin="12,0,0,0" SelectedIndex="0">
-                <ComboBoxItem Content="Sort by Date"/>
-                <ComboBoxItem Content="Sort by Name"/>
-                <ComboBoxItem Content="Sort by Duration"/>
+            <ComboBox Grid.Column="1" Width="180" Margin="12,0,0,0" 
+                      SelectedIndex="{Binding SelectedSortIndex}">
+                <ComboBoxItem Content="Date (newest first)"/>
+                <ComboBoxItem Content="Date (oldest first)"/>
+                <ComboBoxItem Content="Avg FPS (high to low)"/>
+                <ComboBoxItem Content="Avg FPS (low to high)"/>
+                <ComboBoxItem Content="Duration (longest)"/>
+                <ComboBoxItem Content="Duration (shortest)"/>
             </ComboBox>
-            <ui:Button Grid.Column="2" Icon="{ui:SymbolIcon ArrowClockwise24}" 
-                       ToolTip="Refresh sessions list" Margin="8,0,0,0" Command="{Binding RefreshSessionsCommand}"/>
+            <ui:Button Grid.Column="2" Icon="{ui:SymbolIcon ArrowReset24}" 
+                       ToolTip="Reset filters (clears search and sort)" Margin="8,0,0,0" 
+                       Command="{Binding ResetFiltersCommand}"/>
+            <ui:Button Grid.Column="3" Icon="{ui:SymbolIcon ArrowClockwise24}" 
+                       ToolTip="Rescan sessions folder" Margin="8,0,0,0" 
+                       Command="{Binding RefreshSessionsCommand}"/>
         </Grid>
 
         <!-- Sessions List -->
@@ -128,10 +137,13 @@
                                            Foreground="{StaticResource ZykeSuccessBrush}" FontWeight="SemiBold"/>
                                 <StackPanel Grid.Column="4" Orientation="Horizontal">
                                     <ui:Button Icon="{ui:SymbolIcon Open24}" ToolTip="Open session folder" 
-                                               Command="{Binding DataContext.OpenSelectedSessionFolderCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                               Command="{Binding DataContext.OpenSessionFolderForItemCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                               CommandParameter="{Binding}"
                                                Appearance="Secondary" Margin="0,0,4,0"/>
-                                    <ui:Button Icon="{ui:SymbolIcon DocumentPdf24}" ToolTip="Open PDF report"
-                                               Command="{Binding DataContext.OpenSelectedSessionReportCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                    <ui:Button Icon="{ui:SymbolIcon DocumentPdf24}" 
+                                               ToolTip="{Binding HasReport, Converter={StaticResource HasReportToTooltipConverter}}"
+                                               Command="{Binding DataContext.OpenSessionReportForItemCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                               CommandParameter="{Binding}"
                                                Appearance="Secondary"
                                                IsEnabled="{Binding HasReport}"/>
                                 </StackPanel>

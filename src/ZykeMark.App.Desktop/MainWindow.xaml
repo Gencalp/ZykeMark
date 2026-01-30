@@ -61,7 +61,8 @@
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="ZykeMark" FontSize="16" FontWeight="Bold" Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
-                                    <TextBlock Text="Benchmarking Tool" FontSize="11" Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                    <TextBlock Text="Gaming Quality Partner" FontSize="10" FontStyle="Italic" 
+                                               Foreground="{StaticResource ZykeAccentBrush}" Opacity="0.9"/>
                                 </StackPanel>
                             </Grid>
                         </StackPanel>
@@ -129,6 +130,17 @@
                                        Appearance="Primary" Margin="0,0,8,0"
                                        ToolTip="{Binding StartButtonTooltip}"
                                        ToolTipService.ShowOnDisabled="True"/>
+                            <ui:Button Content="Pause" Icon="{ui:SymbolIcon Pause24}" 
+                                       Command="{Binding PauseCommand}" 
+                                       Appearance="Caution" Margin="0,0,8,0"
+                                       ToolTip="Pause capture (session stays open)"
+                                       ToolTipService.ShowOnDisabled="True"/>
+                            <ui:Button Content="Resume" Icon="{ui:SymbolIcon PlayCircle24}" 
+                                       Command="{Binding ResumeCommand}" 
+                                       Appearance="Success" Margin="0,0,8,0"
+                                       ToolTip="Resume paused session"
+                                       ToolTipService.ShowOnDisabled="True"
+                                       Visibility="{Binding IsSessionPaused, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                             <ui:Button Content="Stop" Icon="{ui:SymbolIcon Stop24}" 
                                        Command="{Binding EndCommand}" 
                                        Appearance="Danger" Margin="0,0,16,0"
@@ -142,15 +154,35 @@
                                                Foreground="{StaticResource ZykeTextPrimaryBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
+                            
+                            <!-- Countdown indicator -->
+                            <Border Background="{StaticResource ZykeWarningBrush}" CornerRadius="6" Padding="12,6" Margin="0,0,8,0"
+                                    Visibility="{Binding IsCountdownActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="{Binding CountdownText}" FontSize="14" FontWeight="SemiBold" 
+                                           Foreground="White" VerticalAlignment="Center"/>
+                            </Border>
                         </StackPanel>
 
                         <!-- Process/Build Input -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
                             <StackPanel Margin="0,0,12,0">
-                                <TextBlock Text="Process" FontSize="10" Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,0,0,2"/>
-                                <ui:TextBox x:Name="ProcessNameTextBox" Width="180" PlaceholderText="Process name or PID..." 
-                                            Text="{Binding ProcessName, UpdateSourceTrigger=PropertyChanged}"
-                                            IsEnabled="{Binding IsSessionRunning, Converter={StaticResource InverseBoolConverter}}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                    <TextBlock Text="Process" FontSize="10" Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                    <ui:Button Icon="{ui:SymbolIcon ArrowSync20}" Padding="2" Margin="4,0,0,0"
+                                               Command="{Binding RefreshProcessListCommand}" 
+                                               ToolTip="Refresh process list" Height="16" Width="16"/>
+                                </StackPanel>
+                                <ComboBox Width="240" 
+                                          ItemsSource="{Binding RunningProcesses}" 
+                                          SelectedItem="{Binding SelectedProcess}"
+                                          DisplayMemberPath="FullDisplayName"
+                                          IsEditable="True"
+                                          Text="{Binding ProcessName, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEnabled="{Binding IsSessionRunning, Converter={StaticResource InverseBoolConverter}}"
+                                          ToolTip="Select an app or enter PID; capture is best when the target window stays focused."/>
+                                <TextBlock Text="{Binding ProcessValidationMessage}" FontSize="9" 
+                                           Foreground="{StaticResource ZykeErrorBrush}" Margin="0,2,0,0"
+                                           Visibility="{Binding ProcessValidationMessage, Converter={StaticResource StringToVisibilityConverter}}"/>
                             </StackPanel>
                             <StackPanel Margin="0,0,12,0">
                                 <TextBlock Text="Build" FontSize="10" Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,0,0,2"/>
