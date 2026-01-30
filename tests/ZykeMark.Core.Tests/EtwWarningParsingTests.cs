@@ -151,11 +151,17 @@ public class DataQualityTests
     [Fact]
     public void Create_WithNullCount_DefaultsToZeroAndNone()
     {
+        // When no warnings are parsed (null count from parser), defaults should be:
+        // - Count = 0
+        // - Risk = None
+        // - Warnings = empty array (not null, not dictionary)
         var quality = DataQuality.Create(null);
 
         Assert.Equal(0, quality.EtwEventsLostCount);
         Assert.Equal(EtwRiskLevel.None, quality.EtwEventsLostRiskLevel);
+        Assert.NotNull(quality.CaptureWarnings);
         Assert.Empty(quality.CaptureWarnings);
+        Assert.IsAssignableFrom<IReadOnlyList<string>>(quality.CaptureWarnings);
     }
 
     [Fact]
@@ -169,23 +175,7 @@ public class DataQualityTests
     }
 
     [Fact]
-    public void DataQuality_Defaults_NoWarnings()
-    {
-        // When no warnings are parsed (null count from parser), defaults should be:
-        // - Count = 0
-        // - Risk = None
-        // - Warnings = empty array
-        var quality = DataQuality.Create(null);
-
-        Assert.Equal(0, quality.EtwEventsLostCount);
-        Assert.Equal(EtwRiskLevel.None, quality.EtwEventsLostRiskLevel);
-        Assert.NotNull(quality.CaptureWarnings);
-        Assert.Empty(quality.CaptureWarnings);
-        Assert.IsAssignableFrom<IReadOnlyList<string>>(quality.CaptureWarnings);
-    }
-
-    [Fact]
-    public void DataQuality_ParsesWarnings_FromStdoutAndStderr()
+    public void ParseEtwWarnings_AccumulatesFromStdoutAndStderr()
     {
         // Test that warnings from both stdout and stderr are accumulated
         var stdout = "warning: 1000 ETW events were lost.";
@@ -196,9 +186,14 @@ public class DataQualityTests
         // Total count should be sum of all warnings
         Assert.Equal(1800, count);
         Assert.Equal(3, warnings.Count);
+    }
 
-        // Create DataQuality and verify risk level
-        var quality = DataQuality.Create(count, warnings.ToList());
+    [Fact]
+    public void Create_WithParsedWarnings_SetsCorrectRiskLevel()
+    {
+        // Test that DataQuality.Create correctly computes risk level for moderate count
+        var quality = DataQuality.Create(1800, new List<string> { "warning1", "warning2", "warning3" });
+
         Assert.Equal(1800, quality.EtwEventsLostCount);
         Assert.Equal(EtwRiskLevel.Moderate, quality.EtwEventsLostRiskLevel);
         Assert.Equal(3, quality.CaptureWarnings.Count);
