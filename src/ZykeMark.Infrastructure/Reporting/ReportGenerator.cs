@@ -234,59 +234,48 @@ public sealed class ReportGenerator
 
     /// <summary>
     /// Formats the structured CaptureTarget JSON object into a human-readable display string.
+    /// Parses the JSON and delegates to the core CaptureTarget model's ToDisplayString.
     /// </summary>
     private static string FormatCaptureTargetFromObject(JsonElement captureTargetProp)
     {
-        var parts = new List<string>();
+        // Parse properties from JSON
+        string? processName = null;
+        int? processId = null;
+        string? selectionMode = null;
+        string? windowTitle = null;
 
         if (captureTargetProp.TryGetProperty("ProcessName", out var processNameProp) 
             && processNameProp.ValueKind == JsonValueKind.String)
         {
-            var processName = processNameProp.GetString();
-            if (!string.IsNullOrWhiteSpace(processName))
-            {
-                parts.Add(processName);
-            }
+            processName = processNameProp.GetString();
         }
 
         if (captureTargetProp.TryGetProperty("ProcessId", out var processIdProp) 
             && processIdProp.ValueKind == JsonValueKind.Number)
         {
-            parts.Add($"PID {processIdProp.GetInt32()}");
+            processId = processIdProp.GetInt32();
+        }
+
+        if (captureTargetProp.TryGetProperty("SelectionMode", out var selectionModeProp) 
+            && selectionModeProp.ValueKind == JsonValueKind.String)
+        {
+            selectionMode = selectionModeProp.GetString();
         }
 
         if (captureTargetProp.TryGetProperty("WindowTitle", out var windowTitleProp) 
             && windowTitleProp.ValueKind == JsonValueKind.String)
         {
-            var windowTitle = windowTitleProp.GetString();
-            if (!string.IsNullOrWhiteSpace(windowTitle))
-            {
-                parts.Add($"\"{windowTitle}\"");
-            }
+            windowTitle = windowTitleProp.GetString();
         }
 
-        if (parts.Count == 0)
-        {
-            return "Unknown";
-        }
+        // Create CaptureTarget and use its ToDisplayString for consistent formatting
+        var captureTarget = new CaptureTarget(
+            processName,
+            processId,
+            selectionMode ?? CaptureTarget.ModeAuto,
+            windowTitle);
 
-        var result = string.Join(" / ", parts);
-
-        // Append selection mode in parentheses
-        var modeDisplay = "unknown";
-        if (captureTargetProp.TryGetProperty("SelectionMode", out var selectionModeProp) 
-            && selectionModeProp.ValueKind == JsonValueKind.String)
-        {
-            modeDisplay = selectionModeProp.GetString() switch
-            {
-                "pid" => "by PID",
-                "name" => "by name",
-                "auto" => "auto",
-                _ => selectionModeProp.GetString() ?? "unknown"
-            };
-        }
-
-        return $"{result} ({modeDisplay})";
+        return captureTarget.ToDisplayString();
     }
 
     private static RunConfig ParseRunConfig(JsonElement runConfigProp)

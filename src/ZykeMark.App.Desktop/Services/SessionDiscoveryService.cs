@@ -243,45 +243,22 @@ public sealed class CaptureTargetData
     public string? WindowTitle { get; set; }
 
     /// <summary>
-    /// Returns a human-readable display string for the capture target.
+    /// Converts this data object to a CaptureTarget model instance.
     /// </summary>
-    public string ToDisplayString()
+    public ZykeMark.Core.Models.CaptureTarget ToCaptureTarget()
     {
-        var parts = new List<string>();
-
-        if (!string.IsNullOrWhiteSpace(ProcessName))
-        {
-            parts.Add(ProcessName);
-        }
-
-        if (ProcessId.HasValue)
-        {
-            parts.Add($"PID {ProcessId}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(WindowTitle))
-        {
-            parts.Add($"\"{WindowTitle}\"");
-        }
-
-        if (parts.Count == 0)
-        {
-            return "Unknown";
-        }
-
-        var result = string.Join(" / ", parts);
-
-        // Append selection mode in parentheses
-        var modeDisplay = SelectionMode switch
-        {
-            "pid" => "by PID",
-            "name" => "by name",
-            "auto" => "auto",
-            _ => SelectionMode ?? "unknown"
-        };
-
-        return $"{result} ({modeDisplay})";
+        return new ZykeMark.Core.Models.CaptureTarget(
+            ProcessName,
+            ProcessId,
+            SelectionMode ?? ZykeMark.Core.Models.CaptureTarget.ModeAuto,
+            WindowTitle);
     }
+
+    /// <summary>
+    /// Returns a human-readable display string for the capture target.
+    /// Delegates to the core CaptureTarget model to avoid duplication.
+    /// </summary>
+    public string ToDisplayString() => ToCaptureTarget().ToDisplayString();
 }
 
 public sealed class SessionAggregatesData
