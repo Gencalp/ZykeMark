@@ -111,9 +111,23 @@ public sealed class ReportGenerator
 
         var gameName = metadata.TryGetProperty("GameName", out var gameProp) ? gameProp.GetString() : null;
         var buildVersion = metadata.TryGetProperty("BuildVersion", out var buildProp) ? buildProp.GetString() : null;
-        var captureTarget = metadata.TryGetProperty("CaptureTarget", out var captureTargetProp)
-            ? captureTargetProp.GetString()
-            : null;
+        
+        // Parse CaptureTarget: supports both old string format and new structured object format
+        string? captureTarget = null;
+        if (metadata.TryGetProperty("CaptureTarget", out var captureTargetProp))
+        {
+            if (captureTargetProp.ValueKind == JsonValueKind.Object)
+            {
+                // New structured format: { processName, processId, selectionMode, windowTitle }
+                captureTarget = FormatCaptureTargetFromObject(captureTargetProp);
+            }
+            else if (captureTargetProp.ValueKind == JsonValueKind.String)
+            {
+                // Legacy simple string format
+                captureTarget = captureTargetProp.GetString();
+            }
+        }
+        
         var captureMode = metadata.TryGetProperty("CaptureMode", out var captureModeProp)
             ? captureModeProp.GetString()
             : null;
@@ -216,6 +230,63 @@ public sealed class ReportGenerator
         }
 
         return new ReportDataQuality(etwEventsLostCount, etwRiskLevel, captureWarnings);
+    }
+
+    /// <summary>
+    /// Formats the structured CaptureTarget JSON object into a human-readable display string.
+    /// </summary>
+    private static string FormatCaptureTargetFromObject(JsonElement captureTargetProp)
+    {
+        var parts = new List<string>();
+
+        if (captureTargetProp.TryGetProperty("ProcessName", out var processNameProp) 
+            && processNameProp.ValueKind == JsonValueKind.String)
+        {
+            var processName = processNameProp.GetString();
+            if (!string.IsNullOrWhiteSpace(processName))
+            {
+                parts.Add(processName);
+            }
+        }
+
+        if (captureTargetProp.TryGetProperty("ProcessId", out var processIdProp) 
+            && processIdProp.ValueKind == JsonValueKind.Number)
+        {
+            parts.Add($"PID {processIdProp.GetInt32()}");
+        }
+
+        if (captureTargetProp.TryGetProperty("WindowTitle", out var windowTitleProp) 
+            && windowTitleProp.ValueKind == JsonValueKind.String)
+        {
+            var windowTitle = windowTitleProp.GetString();
+            if (!string.IsNullOrWhiteSpace(windowTitle))
+            {
+                parts.Add($"\"{windowTitle}\"");
+            }
+        }
+
+        if (parts.Count == 0)
+        {
+            return "Unknown";
+        }
+
+        var result = string.Join(" / ", parts);
+
+        // Append selection mode in parentheses
+        var modeDisplay = "unknown";
+        if (captureTargetProp.TryGetProperty("SelectionMode", out var selectionModeProp) 
+            && selectionModeProp.ValueKind == JsonValueKind.String)
+        {
+            modeDisplay = selectionModeProp.GetString() switch
+            {
+                "pid" => "by PID",
+                "name" => "by name",
+                "auto" => "auto",
+                _ => selectionModeProp.GetString() ?? "unknown"
+            };
+        }
+
+        return $"{result} ({modeDisplay})";
     }
 
     private static RunConfig ParseRunConfig(JsonElement runConfigProp)

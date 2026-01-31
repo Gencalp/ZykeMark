@@ -111,7 +111,8 @@ public sealed class SessionDiscoveryService
                         summary.Aggregates?.AvgFps,
                         summary.Aggregates?.P99FrameTimeMs,
                         summary.DataQuality?.EtwEventsLostRiskLevel,
-                        File.Exists(Path.Combine(sessionDir, "report.pdf")));
+                        File.Exists(Path.Combine(sessionDir, "report.pdf")),
+                        summary.Metadata.CaptureTarget?.ToDisplayString());
                 }
             }
             catch
@@ -140,7 +141,8 @@ public sealed class SessionDiscoveryService
                         null,  // AvgFps
                         null,  // P99FrameTimeMs
                         null,  // EtwRiskLevel
-                        File.Exists(Path.Combine(sessionDir, "report.pdf")));
+                        File.Exists(Path.Combine(sessionDir, "report.pdf")),
+                        metadata.CaptureTarget?.ToDisplayString());
                 }
             }
             catch
@@ -166,7 +168,8 @@ public sealed record SessionListItem(
     double? AvgFps,
     double? P99FrameTimeMs,
     string? EtwRiskLevel,
-    bool HasReport)
+    bool HasReport,
+    string? CaptureTargetDisplay = null)
 {
     /// <summary>
     /// Display date in user's locale format (e.g., dd/MM/yyyy HH:mm for tr-TR).
@@ -226,6 +229,59 @@ public sealed class SessionMetadataData
     public long? DurationMs { get; set; }
     public string? GameName { get; set; }
     public string? BuildVersion { get; set; }
+    public CaptureTargetData? CaptureTarget { get; set; }
+}
+
+/// <summary>
+/// Data model for deserializing CaptureTarget from summary.json.
+/// </summary>
+public sealed class CaptureTargetData
+{
+    public string? ProcessName { get; set; }
+    public int? ProcessId { get; set; }
+    public string? SelectionMode { get; set; }
+    public string? WindowTitle { get; set; }
+
+    /// <summary>
+    /// Returns a human-readable display string for the capture target.
+    /// </summary>
+    public string ToDisplayString()
+    {
+        var parts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(ProcessName))
+        {
+            parts.Add(ProcessName);
+        }
+
+        if (ProcessId.HasValue)
+        {
+            parts.Add($"PID {ProcessId}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(WindowTitle))
+        {
+            parts.Add($"\"{WindowTitle}\"");
+        }
+
+        if (parts.Count == 0)
+        {
+            return "Unknown";
+        }
+
+        var result = string.Join(" / ", parts);
+
+        // Append selection mode in parentheses
+        var modeDisplay = SelectionMode switch
+        {
+            "pid" => "by PID",
+            "name" => "by name",
+            "auto" => "auto",
+            _ => SelectionMode ?? "unknown"
+        };
+
+        return $"{result} ({modeDisplay})";
+    }
 }
 
 public sealed class SessionAggregatesData

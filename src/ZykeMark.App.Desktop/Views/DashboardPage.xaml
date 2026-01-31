@@ -94,6 +94,16 @@
                                        Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
                             <TextBlock Text="{Binding LastSessionDate}" FontSize="12"
                                        Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <TextBlock Text="Target: " FontSize="11" Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding LastSessionCaptureTarget}" FontSize="11"
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="ID: " FontSize="10" Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding LastSessionId}" FontSize="10" FontFamily="Consolas"
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                            </StackPanel>
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Margin="24,0" VerticalAlignment="Center">

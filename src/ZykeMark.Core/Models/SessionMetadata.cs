@@ -12,4 +12,5 @@ public sealed record SessionMetadata(
     long? DurationMs,
     string? GameName,
     string? BuildVersion,
-    RunConfig? RunConfig);
+    RunConfig? RunConfig,
+    CaptureTarget? CaptureTarget = null);
