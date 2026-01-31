@@ -28,6 +28,19 @@
                                    Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
                         <TextBlock Text="Real-time performance metrics and analysis" FontSize="14" 
                                    Foreground="{StaticResource ZykeTextSecondaryBrush}" Margin="0,4,0,0"/>
+                        <!-- Capture Target and Session Info -->
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="Capture Target: " FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding CurrentCaptureTargetDisplay}" FontSize="12"
+                                       Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <TextBlock Text="Session ID: " FontSize="11"
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding CurrentSessionId}" FontSize="11" FontFamily="Consolas"
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                        </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <Border CornerRadius="4" Padding="8,4" Margin="0,0,8,0"

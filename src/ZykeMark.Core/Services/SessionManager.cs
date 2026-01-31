@@ -17,7 +17,7 @@ public sealed class SessionManager : ISessionManager
         _utcNow = utcNowProvider ?? (() => DateTime.UtcNow);
     }
 
-    public SessionMetadata StartSession(string? gameName, string? buildVersion, RunConfig? runConfig = null)
+    public SessionMetadata StartSession(string? gameName, string? buildVersion, RunConfig? runConfig = null, CaptureTarget? captureTarget = null)
     {
         var sessionId = Guid.NewGuid().ToString("N");
         var startedAtUtc = _utcNow();
@@ -29,7 +29,8 @@ public sealed class SessionManager : ISessionManager
             DurationMs: null,
             gameName,
             buildVersion,
-            runConfig);
+            runConfig,
+            captureTarget);
 
         _localStore.CreateSession(metadata);
         _currentSession = metadata;

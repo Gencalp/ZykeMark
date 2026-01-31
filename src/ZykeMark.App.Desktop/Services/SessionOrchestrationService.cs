@@ -55,13 +55,17 @@ public sealed class SessionOrchestrationService : IDisposable
 
     public string? CurrentSessionFolder => _sessionFolder;
 
-    public SessionMetadata StartSession(string? gameName, string? buildVersion, RunConfig? runConfig = null)
+    public SessionMetadata StartSession(string? gameName, string? buildVersion, RunConfig? runConfig = null, CaptureTarget? captureTarget = null)
     {
         try
         {
             _logger.Log($"Starting session - Game: {gameName ?? "(none)"}, Build: {buildVersion ?? "(none)"}");
+            if (captureTarget is not null)
+            {
+                _logger.Log($"Capture target: {captureTarget.ToDisplayString()}");
+            }
 
-            var metadata = _sessionManager.StartSession(gameName, buildVersion, runConfig);
+            var metadata = _sessionManager.StartSession(gameName, buildVersion, runConfig, captureTarget);
             _sessionMetadata = metadata;
             _sessionId = metadata.SessionId;
             _sessionFolder = Path.Combine(GetSessionsRoot(), metadata.SessionId);

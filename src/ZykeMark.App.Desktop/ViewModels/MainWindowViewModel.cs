@@ -278,11 +278,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string DataQualityOutlierRisk { get; private set; } = "Low";
     public string DataQualityWarnings { get; private set; } = "None";
 
+    // Current session capture info (for Live Session page display)
+    public string CurrentSessionId => _metadata?.SessionId ?? "N/A";
+    public string CurrentCaptureTargetDisplay => _metadata?.CaptureTarget?.ToDisplayString() ?? "N/A";
+
     // Last Session Summary for Dashboard
     public string LastSessionGameName { get; private set; } = "N/A";
     public string LastSessionDate { get; private set; } = "N/A";
     public string LastSessionAvgFps { get; private set; } = "N/A";
     public string LastSessionP99 { get; private set; } = "N/A";
+    public string LastSessionCaptureTarget { get; private set; } = "N/A";
+    public string LastSessionId { get; private set; } = "N/A";
 
     // PresentMon Validation
     public bool ShowPresentMonValidation { get; private set; }
@@ -479,17 +485,65 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             State = SessionState.Running;
             _samples.Clear();
             _pausedSamples.Clear();
-            _metadata = _service.StartSession(ProcessName, BuildVersion, new RunConfig());
+
+            // Build CaptureTarget from the current process selection
+            var captureTarget = BuildCaptureTarget();
+
+            _metadata = _service.StartSession(ProcessName, BuildVersion, new RunConfig(), captureTarget);
             _startUtc = DateTime.UtcNow;
             _durationTimer.Start();
             StatusMessage = "Session started.";
             OnPropertyChanged(nameof(SessionFolder));
+            OnPropertyChanged(nameof(CurrentCaptureTargetDisplay));
+            OnPropertyChanged(nameof(CurrentSessionId));
         }
         catch (Exception ex)
         {
             HandleError("Failed to start session.", ex);
             State = SessionState.Error;
         }
+    }
+
+    /// <summary>
+    /// Builds a CaptureTarget from the current process selection state.
+    /// </summary>
+    private CaptureTarget BuildCaptureTarget()
+    {
+        string selectionMode;
+        string? processName = null;
+        int? processId = null;
+        string? windowTitle = null;
+
+        if (_selectedProcess is not null)
+        {
+            // User selected from the running processes dropdown
+            selectionMode = CaptureTarget.ModePid;
+            processId = _selectedProcess.ProcessId;
+            processName = _selectedProcess.ProcessName;
+            windowTitle = _selectedProcess.WindowTitle;
+        }
+        else if (!string.IsNullOrWhiteSpace(ProcessName))
+        {
+            // User typed a process name manually
+            // Try to parse as PID first
+            if (int.TryParse(ProcessName.Trim(), out var typedPid))
+            {
+                selectionMode = CaptureTarget.ModePid;
+                processId = typedPid;
+            }
+            else
+            {
+                selectionMode = CaptureTarget.ModeName;
+                processName = ProcessName.Trim();
+            }
+        }
+        else
+        {
+            // Fallback/auto mode
+            selectionMode = CaptureTarget.ModeAuto;
+        }
+
+        return new CaptureTarget(processName, processId, selectionMode, windowTitle);
     }
 
     private void PauseSession()
@@ -686,6 +740,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             LastSessionDate = "N/A";
             LastSessionAvgFps = "N/A";
             LastSessionP99 = "N/A";
+            LastSessionCaptureTarget = "N/A";
+            LastSessionId = "N/A";
         }
         else
         {
@@ -694,12 +750,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             LastSessionDate = lastSession.StartDateDisplay;
             LastSessionAvgFps = lastSession.AvgFpsDisplay;
             LastSessionP99 = lastSession.P99Display;
+            LastSessionCaptureTarget = lastSession.CaptureTargetDisplay ?? "N/A";
+            LastSessionId = lastSession.SessionId;
         }
 
         OnPropertyChanged(nameof(LastSessionGameName));
         OnPropertyChanged(nameof(LastSessionDate));
         OnPropertyChanged(nameof(LastSessionAvgFps));
         OnPropertyChanged(nameof(LastSessionP99));
+        OnPropertyChanged(nameof(LastSessionCaptureTarget));
+        OnPropertyChanged(nameof(LastSessionId));
     }
 
     private void FilterSessions()
