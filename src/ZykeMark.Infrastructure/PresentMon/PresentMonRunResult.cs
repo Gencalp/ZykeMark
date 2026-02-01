@@ -9,10 +9,12 @@ namespace ZykeMark.Infrastructure.PresentMon;
 /// <param name="StdErr">The standard error captured from PresentMon.</param>
 /// <param name="EtwEventsLostCount">The number of ETW events lost during capture, if detected. Null if not detected.</param>
 /// <param name="RawWarnings">List of raw warning strings detected in stdout/stderr.</param>
+/// <param name="Diagnostics">Capture diagnostics for debugging when issues occur.</param>
 public sealed record PresentMonRunResult(
     string? CsvPath,
     int ExitCode,
     string StdOut,
     string StdErr,
     int? EtwEventsLostCount = null,
-    IReadOnlyList<string>? RawWarnings = null);
+    IReadOnlyList<string>? RawWarnings = null,
+    CaptureDiagnostics? Diagnostics = null);

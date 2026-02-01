@@ -8,6 +8,7 @@ namespace ZykeMark.Infrastructure.PresentMon;
 
 public sealed class PresentMonRunner : IPresentMonRunner
 {
+    private const int MaxCsvPreviewLines = 30;
     private readonly Action<string>? _logger;
 
     public PresentMonRunner(Action<string>? logger = null)
@@ -35,14 +36,47 @@ public sealed class PresentMonRunner : IPresentMonRunner
             throw new ArgumentException("Process name or process ID must be specified.", nameof(options));
         }
 
-        // Pre-check: Validate that process exists before running PresentMon
-        ValidateProcessExists(options);
+        // Initialize diagnostics
+        var diagnostics = new CaptureDiagnostics
+        {
+            StartUtc = DateTime.UtcNow
+        };
 
-        var exePath = ResolveExecutablePath(options.PresentMonPath);
-        var useFileOutput = !string.IsNullOrWhiteSpace(options.SessionFolder) && !string.IsNullOrWhiteSpace(options.SessionId);
-        var csvPath = useFileOutput ? Path.Combine(options.SessionFolder!, "presentmon.csv") : null;
-        var arguments = BuildArguments(options, csvPath);
-        var workingDirectory = useFileOutput ? options.SessionFolder : null;
+        string? exePath = null;
+        string? csvPath = null;
+        string? workingDirectory = null;
+        string arguments;
+        bool useFileOutput;
+
+        try
+        {
+            // Pre-check: Validate that process exists before running PresentMon
+            ValidateProcessExists(options);
+
+            exePath = ResolveExecutablePath(options.PresentMonPath);
+            useFileOutput = !string.IsNullOrWhiteSpace(options.SessionFolder) && !string.IsNullOrWhiteSpace(options.SessionId);
+            csvPath = useFileOutput ? Path.Combine(options.SessionFolder!, "presentmon.csv") : null;
+            arguments = BuildArguments(options, csvPath);
+            workingDirectory = useFileOutput ? options.SessionFolder : null;
+
+            // Populate diagnostics
+            diagnostics.PresentMonExePath = exePath;
+            diagnostics.WorkingDirectory = workingDirectory;
+            diagnostics.ArgumentString = arguments;
+            diagnostics.OutputCsvPath = csvPath;
+        }
+        catch (Exception ex)
+        {
+            diagnostics.EndUtc = DateTime.UtcNow;
+            diagnostics.Success = false;
+            diagnostics.FailureReason = $"Pre-flight check failed: {ex.Message}";
+            diagnostics.ExceptionDetails = ex.ToString();
+
+            // Write diagnostics even on failure
+            WriteDiagnosticsSafe(diagnostics, options.SessionFolder);
+
+            throw;
+        }
 
         var startInfo = new ProcessStartInfo
         {
@@ -70,11 +104,20 @@ public sealed class PresentMonRunner : IPresentMonRunner
         {
             if (!process.Start())
             {
+                diagnostics.EndUtc = DateTime.UtcNow;
+                diagnostics.Success = false;
+                diagnostics.FailureReason = "PresentMon process failed to start (Start() returned false)";
+                WriteDiagnosticsSafe(diagnostics, options.SessionFolder);
                 throw new InvalidOperationException("Failed to start PresentMon.");
             }
         }
         catch (Win32Exception ex)
         {
+            diagnostics.EndUtc = DateTime.UtcNow;
+            diagnostics.Success = false;
+            diagnostics.FailureReason = $"PresentMon process failed to start: {ex.Message}";
+            diagnostics.ExceptionDetails = ex.ToString();
+            WriteDiagnosticsSafe(diagnostics, options.SessionFolder);
             throw new InvalidOperationException(
                 "Failed to start PresentMon. Ensure PresentMon.exe is available and you have permission to run it.",
                 ex);
@@ -136,6 +179,12 @@ public sealed class PresentMonRunner : IPresentMonRunner
         var stdout = stdoutBuilder.ToString();
         var stderr = stderrBuilder.ToString();
 
+        // Update diagnostics with process results
+        diagnostics.EndUtc = DateTime.UtcNow;
+        diagnostics.ExitCode = exitCode;
+        diagnostics.StdOut = stdout;
+        diagnostics.StdErr = stderr;
+
         Log($"[PresentMon] Exit code: {exitCode}");
         Log($"[PresentMon] stdout captured: {stdout.Length} chars");
         Log($"[PresentMon] stderr captured: {stderr.Length} chars");
@@ -155,16 +204,63 @@ public sealed class PresentMonRunner : IPresentMonRunner
         string? actualCsvPath = null;
         if (useFileOutput && csvPath is not null)
         {
-            actualCsvPath = DiscoverAndValidateCsvOutput(csvPath, exePath, exitCode, stdout, stderr);
+            try
+            {
+                actualCsvPath = DiscoverAndValidateCsvOutput(csvPath, exePath, exitCode, stdout, stderr, diagnostics);
+                diagnostics.Success = true;
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Success = false;
+                diagnostics.FailureReason = ex.Message;
+                diagnostics.ExceptionDetails = ex.ToString();
+                // Don't rethrow - return result with null CSV path and let caller handle
+                Log($"[PresentMon] CSV discovery/validation failed: {ex.Message}");
+            }
+        }
+        else
+        {
+            diagnostics.Success = true;
         }
 
-        return new PresentMonRunResult(actualCsvPath, exitCode, stdout, stderr, etwEventsLostCount, rawWarnings);
+        // Always write diagnostics to session folder
+        WriteDiagnosticsSafe(diagnostics, options.SessionFolder);
+
+        return new PresentMonRunResult(actualCsvPath, exitCode, stdout, stderr, etwEventsLostCount, rawWarnings, diagnostics);
     }
 
     /// <summary>
-    /// Discovers the CSV output file and returns its path. Throws if file not found or invalid.
+    /// Writes diagnostics to the session folder, swallowing any exceptions.
     /// </summary>
-    private string DiscoverAndValidateCsvOutput(string csvPath, string presentMonExePath, int exitCode, string stdout, string stderr)
+    private void WriteDiagnosticsSafe(CaptureDiagnostics diagnostics, string? sessionFolder)
+    {
+        if (string.IsNullOrWhiteSpace(sessionFolder))
+        {
+            return;
+        }
+
+        try
+        {
+            diagnostics.WriteToSessionFolder(sessionFolder);
+            Log($"[PresentMon] Diagnostics written to {Path.Combine(sessionFolder, "capture_diagnostics.json")}");
+        }
+        catch (Exception ex)
+        {
+            Log($"[PresentMon] Failed to write diagnostics: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Discovers the CSV output file and returns its path. Returns null if file not found or invalid.
+    /// Also populates the diagnostics with CSV file information.
+    /// </summary>
+    private string? DiscoverAndValidateCsvOutput(
+        string csvPath,
+        string presentMonExePath,
+        int exitCode,
+        string stdout,
+        string stderr,
+        CaptureDiagnostics diagnostics)
     {
         // Wait for file system to finish flushing (PresentMon may take time to finalize output)
         Thread.Sleep(250);
@@ -194,13 +290,16 @@ public sealed class PresentMonRunner : IPresentMonRunner
                 var searchLocations = string.IsNullOrEmpty(exeDirectory)
                     ? $"directory '{expectedDir}'"
                     : $"directories '{expectedDir}' and executable directory '{exeDirectory}'";
-                throw new InvalidOperationException(
-                    $"PresentMon did not create output file. Searched for multi_csv pattern '{multiCsvPattern}' and default pattern 'PresentMon-*.csv' in {searchLocations}. Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                
+                diagnostics.OutputCsvExists = false;
+                diagnostics.FailureReason = $"CSV file not found. Searched for '{multiCsvPattern}' and 'PresentMon-*.csv' in {searchLocations}";
+                throw new InvalidOperationException(diagnostics.FailureReason);
             }
 
             try
             {
                 Log($"[PresentMon] Selected CSV path: {actualCsvPath}");
+                diagnostics.OutputCsvPath = actualCsvPath;
 
                 // If the file was found in a different directory, copy it to the expected location
                 var expectedDirectory = Path.GetDirectoryName(csvPath);
@@ -213,9 +312,19 @@ public sealed class PresentMonRunner : IPresentMonRunner
                     Log($"[PresentMon] Copying CSV from '{actualCsvPath}' to '{targetPath}'");
                     File.Copy(actualCsvPath, targetPath, overwrite: true);
                     actualCsvPath = targetPath;
+                    diagnostics.OutputCsvPath = actualCsvPath;
                 }
 
+                // Populate file info diagnostics
+                var fileInfo = new FileInfo(actualCsvPath);
+                diagnostics.OutputCsvExists = fileInfo.Exists;
+                diagnostics.FileSizeBytes = fileInfo.Length;
+                diagnostics.LastWriteTimeUtc = fileInfo.LastWriteTimeUtc;
+
                 var lines = File.ReadAllLines(actualCsvPath);
+
+                // Save preview lines (first N lines for diagnostics)
+                diagnostics.CsvPreviewLines = lines.Take(MaxCsvPreviewLines).ToList();
 
                 // Log first 3 lines for debugging
                 var previewLines = lines.Take(3).ToArray();
@@ -230,22 +339,33 @@ public sealed class PresentMonRunner : IPresentMonRunner
                 if (headerLine is null)
                 {
                     var firstLines = string.Join(Environment.NewLine, lines.Take(5));
-                    throw new InvalidOperationException(
-                        $"PresentMon output file '{actualCsvPath}' does not contain a valid CSV header. " +
-                        $"Expected header with 'Application,ProcessID,...'. First lines:\n{firstLines}\n" +
-                        $"Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                    diagnostics.FailureReason = $"No valid CSV header found. First lines: {firstLines}";
+                    throw new InvalidOperationException(diagnostics.FailureReason);
+                }
+
+                // Parse header to get column names for diagnostics
+                var tempParser = new PresentMonCsvParser();
+                try
+                {
+                    tempParser.ParseHeader(headerLine);
+                    diagnostics.ParsedHeaderColumns = tempParser.HeaderColumns.ToList();
+                }
+                catch (Exception ex)
+                {
+                    diagnostics.ParserErrors = new List<string> { $"Header parse error: {ex.Message}" };
                 }
 
                 Log($"[PresentMon] CSV header found at line {headerLineIndex}: {headerLine}");
 
                 // Count data rows (lines after the header)
                 var dataRows = lines.Length - headerLineIndex - 1;
+                diagnostics.ParsedRowCount = dataRows;
                 Log($"[PresentMon] CSV output: {actualCsvPath}, {dataRows} data rows (header at line {headerLineIndex})");
 
                 if (dataRows <= 0)
                 {
-                    throw new InvalidOperationException(
-                        $"PresentMon output file '{actualCsvPath}' contains only header (no data rows). Exit code: {exitCode}\nstdout: {stdout}\nstderr: {stderr}");
+                    diagnostics.FailureReason = $"CSV file contains header but no data rows";
+                    throw new InvalidOperationException(diagnostics.FailureReason);
                 }
 
                 return actualCsvPath; // Success - return the discovered path
@@ -258,7 +378,8 @@ public sealed class PresentMonRunner : IPresentMonRunner
             }
         }
 
-        throw new InvalidOperationException($"Failed to discover CSV output file after retries. Expected path: {csvPath}");
+        diagnostics.FailureReason = $"Failed to read CSV output file after {maxRetries} retries";
+        throw new InvalidOperationException(diagnostics.FailureReason);
     }
 
     public async IAsyncEnumerable<string> RunAsync(

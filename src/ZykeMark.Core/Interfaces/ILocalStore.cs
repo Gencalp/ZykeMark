@@ -10,4 +10,9 @@ public interface ILocalStore
     void AppendChunk(string sessionId, RawSampleChunk chunk);
     IReadOnlyList<RawSampleChunk> ReadChunks(string sessionId);
     string WriteSummary(string sessionId, object summaryPayload);
+    
+    /// <summary>
+    /// Gets the folder path for a session.
+    /// </summary>
+    string GetSessionFolder(string sessionId);
 }
