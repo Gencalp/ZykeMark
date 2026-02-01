@@ -556,10 +556,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         _service.Error -= OnServiceError;
         _service.Dispose();
 
+        // Resolve the actual process name for PresentMon
+        // When a process is selected from the dropdown, use its ProcessName (e.g., "msedge")
+        // not the DisplayName (e.g., "msedge (PID 9068)") which would fail to match
+        // When user types manually, use the typed value directly
+        var actualProcessName = _selectedProcess?.ProcessName ?? ProcessName;
+
         // Create service with current capture mode settings
         _service = new SessionOrchestrationService(
             useSimulatedMode: _useSimulatedMode,
-            processName: ProcessName,
+            processName: actualProcessName,
             processId: _selectedProcessId,
             presentMonPath: string.IsNullOrWhiteSpace(_presentMonPath) ? null : _presentMonPath);
         _service.ChunkReceived += OnChunkReceived;
