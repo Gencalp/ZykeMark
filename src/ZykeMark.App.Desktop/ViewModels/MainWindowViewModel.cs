@@ -951,14 +951,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         if (result.IsFound)
         {
             ResolvedPresentMonPath = result.ResolvedAbsolutePath;
-            PresentMonValidationMessage = $"✅ Found: {result.Source}";
+            PresentMonValidationMessage = $"Found via {result.Source}";
             PresentMonValidationBrush = SuccessBrush;
             PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.CheckmarkCircle24;
         }
         else
         {
             ResolvedPresentMonPath = null;
-            PresentMonValidationMessage = "❌ Not found. " + (result.FailureReason?.Split('\n').FirstOrDefault() ?? "PresentMon could not be located.");
+            PresentMonValidationMessage = "Not found. " + (result.FailureReason?.Split('\n').FirstOrDefault() ?? "PresentMon could not be located.");
             PresentMonValidationBrush = ErrorBrush;
             PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.ErrorCircle24;
         }

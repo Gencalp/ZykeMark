@@ -162,12 +162,30 @@ public class PresentMonPathResolverTests
         }
         finally
         {
-            // Only clean up if we created the file
-            if (createdForTest && File.Exists(exePath))
+            // Only clean up if we created the file - use local cleanup to avoid deleting real user files
+            if (createdForTest)
             {
-                try { File.Delete(exePath); } catch { }
+                SafeCleanupTempFile(exePath);
             }
             SafeCleanupTempDir(emptyAppDir);
+        }
+    }
+    
+    /// <summary>
+    /// Safely deletes a single file, ignoring any exceptions.
+    /// </summary>
+    private static void SafeCleanupTempFile(string filePath)
+    {
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+        catch
+        {
+            // Ignore cleanup failures
         }
     }
 

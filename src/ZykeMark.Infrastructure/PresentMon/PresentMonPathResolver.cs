@@ -194,7 +194,13 @@ public sealed class PresentMonPathResolver : IPresentMonPathResolver
             process.Start();
 
             var output = process.StandardOutput.ReadLine();
-            process.WaitForExit(5000); // 5 second timeout
+            var exited = process.WaitForExit(5000); // 5 second timeout
+            
+            // If process didn't exit in time, try to kill it and return what we have
+            if (!exited)
+            {
+                try { process.Kill(); } catch { /* Best effort */ }
+            }
 
             return output?.Trim();
         }

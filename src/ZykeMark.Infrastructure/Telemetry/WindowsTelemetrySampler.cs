@@ -235,19 +235,53 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
     {
         foreach (var counter in _gpuUtilizationCounters)
         {
-            try { counter.Dispose(); } catch { /* Ignore disposal errors */ }
+            try 
+            { 
+                counter.Dispose(); 
+            } 
+            catch (ObjectDisposedException) 
+            {
+                // Counter was already disposed
+            }
+            catch (Exception ex)
+            {
+                // Log but don't throw - cleanup must continue
+                _diagnostics.LastExceptionMessage = $"GPU counter disposal error: {ex.Message}";
+            }
         }
         _gpuUtilizationCounters.Clear();
         
         foreach (var counter in _vramDedicatedCounters)
         {
-            try { counter.Dispose(); } catch { /* Ignore disposal errors */ }
+            try 
+            { 
+                counter.Dispose(); 
+            } 
+            catch (ObjectDisposedException) 
+            {
+                // Counter was already disposed
+            }
+            catch (Exception ex)
+            {
+                _diagnostics.LastExceptionMessage = $"VRAM counter disposal error: {ex.Message}";
+            }
         }
         _vramDedicatedCounters.Clear();
         
         foreach (var counter in _vramSharedCounters)
         {
-            try { counter.Dispose(); } catch { /* Ignore disposal errors */ }
+            try 
+            { 
+                counter.Dispose(); 
+            } 
+            catch (ObjectDisposedException) 
+            {
+                // Counter was already disposed
+            }
+            catch (Exception ex)
+            {
+                _diagnostics.LastExceptionMessage = $"VRAM counter disposal error: {ex.Message}";
+            }
         }
         _vramSharedCounters.Clear();
     }
