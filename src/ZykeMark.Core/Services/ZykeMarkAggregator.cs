@@ -31,6 +31,18 @@ public sealed class ZykeMarkAggregator : IAggregator
 
         var durationMs = samples.Max(sample => sample.TimestampMs) - samples.Min(sample => sample.TimestampMs);
 
+        // Compute telemetry averages
+        var telemetrySamples = samples.Where(s => s.Telemetry is not null).Select(s => s.Telemetry!).ToArray();
+        
+        var avgGpuUtil = ComputeNullableAverage(telemetrySamples, t => t.GpuUtilizationPercent);
+        var avgVramDedicated = ComputeNullableAverage(telemetrySamples, t => t.VramDedicatedMB);
+        var avgVramShared = ComputeNullableAverage(telemetrySamples, t => t.VramSharedMB);
+        var avgCpuProcess = ComputeNullableAverage(telemetrySamples, t => t.CpuProcessPercent);
+        var avgTopThreadCpu = ComputeNullableAverage(telemetrySamples, t => t.TopThreadCpuPercent);
+        var avgRamWorkingSet = ComputeNullableAverage(telemetrySamples, t => t.RamWorkingSetMB);
+        var avgRamPrivateBytes = ComputeNullableAverage(telemetrySamples, t => t.RamPrivateBytesMB);
+        var avgDiskRead = ComputeNullableAverage(telemetrySamples, t => t.DiskReadMBps);
+
         return new SessionAggregates(
             FrameCount: samples.Count,
             DurationMs: durationMs,
@@ -40,7 +52,21 @@ public sealed class ZykeMarkAggregator : IAggregator
             OnePercentLowFps: 1000.0 / p99FrameTimeMs,
             PointOnePercentLowFps: 1000.0 / p99Point9FrameTimeMs,
             AvgCpuFrameTimeMs: cpuTimes.Length > 0 ? cpuTimes.Average() : null,
-            AvgGpuFrameTimeMs: gpuTimes.Length > 0 ? gpuTimes.Average() : null);
+            AvgGpuFrameTimeMs: gpuTimes.Length > 0 ? gpuTimes.Average() : null,
+            AvgGpuUtilizationPercent: avgGpuUtil,
+            AvgVramDedicatedMB: avgVramDedicated,
+            AvgVramSharedMB: avgVramShared,
+            AvgCpuProcessPercent: avgCpuProcess,
+            AvgTopThreadCpuPercent: avgTopThreadCpu,
+            AvgRamWorkingSetMB: avgRamWorkingSet,
+            AvgRamPrivateBytesMB: avgRamPrivateBytes,
+            AvgDiskReadMBps: avgDiskRead);
+    }
+
+    private static double? ComputeNullableAverage(IReadOnlyList<TelemetrySample> samples, Func<TelemetrySample, double?> selector)
+    {
+        var values = samples.Select(selector).Where(v => v.HasValue).Select(v => v!.Value).ToArray();
+        return values.Length > 0 ? values.Average() : null;
     }
 
     // Deterministic percentile calculation using the nearest-rank method.

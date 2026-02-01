@@ -274,6 +274,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string VerdictSummary { get; private set; } = string.Empty;
     public string NextStepsSummary { get; private set; } = string.Empty;
 
+    // Real-time Telemetry properties
+    public string GpuUtilization { get; private set; } = "n/a";
+    public string VramDedicated { get; private set; } = "n/a";
+    public string VramShared { get; private set; } = "n/a";
+    public string VramTotal { get; private set; } = "n/a";
+    public string CpuProcessPercent { get; private set; } = "n/a";
+    public string TopThreadCpuPercent { get; private set; } = "n/a";
+    public string RamWorkingSet { get; private set; } = "n/a";
+    public string RamPrivateBytes { get; private set; } = "n/a";
+    public string DiskReadMBps { get; private set; } = "n/a";
+
     // Data Quality properties
     public string DataQualityEtwRisk { get; private set; } = "None";
     public string DataQualityOutlierRisk { get; private set; } = "Low";
@@ -1028,6 +1039,39 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         Stutter50Count = stutter50.ToString();
         Stutter100Count = stutter100.ToString();
 
+        // Update telemetry metrics from the latest sample
+        var latestTelemetry = latest.Telemetry;
+        if (latestTelemetry is not null)
+        {
+            GpuUtilization = latestTelemetry.GpuUtilizationPercent.HasValue
+                ? $"{latestTelemetry.GpuUtilizationPercent.Value:F1}%"
+                : "n/a";
+            VramDedicated = latestTelemetry.VramDedicatedMB.HasValue
+                ? $"{latestTelemetry.VramDedicatedMB.Value:F0} MB"
+                : "n/a";
+            VramShared = latestTelemetry.VramSharedMB.HasValue
+                ? $"{latestTelemetry.VramSharedMB.Value:F0} MB"
+                : "n/a";
+            VramTotal = latestTelemetry.VramTotalMB.HasValue
+                ? $"{latestTelemetry.VramTotalMB.Value:F0} MB"
+                : "n/a";
+            CpuProcessPercent = latestTelemetry.CpuProcessPercent.HasValue
+                ? $"{latestTelemetry.CpuProcessPercent.Value:F1}%"
+                : "n/a";
+            TopThreadCpuPercent = latestTelemetry.TopThreadCpuPercent.HasValue
+                ? $"{latestTelemetry.TopThreadCpuPercent.Value:F1}%"
+                : "n/a";
+            RamWorkingSet = latestTelemetry.RamWorkingSetMB.HasValue
+                ? $"{latestTelemetry.RamWorkingSetMB.Value:F0} MB"
+                : "n/a";
+            RamPrivateBytes = latestTelemetry.RamPrivateBytesMB.HasValue
+                ? $"{latestTelemetry.RamPrivateBytesMB.Value:F0} MB"
+                : "n/a";
+            DiskReadMBps = latestTelemetry.DiskReadMBps.HasValue
+                ? $"{latestTelemetry.DiskReadMBps.Value:F1} MB/s"
+                : "n/a";
+        }
+
         VerdictSummary = BuildVerdictSummary(aggregates);
         NextStepsSummary = BuildNextStepsSummary(aggregates);
 
@@ -1044,6 +1088,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(Stutter100Count));
         OnPropertyChanged(nameof(VerdictSummary));
         OnPropertyChanged(nameof(NextStepsSummary));
+        
+        // Notify telemetry property changes
+        OnPropertyChanged(nameof(GpuUtilization));
+        OnPropertyChanged(nameof(VramDedicated));
+        OnPropertyChanged(nameof(VramShared));
+        OnPropertyChanged(nameof(VramTotal));
+        OnPropertyChanged(nameof(CpuProcessPercent));
+        OnPropertyChanged(nameof(TopThreadCpuPercent));
+        OnPropertyChanged(nameof(RamWorkingSet));
+        OnPropertyChanged(nameof(RamPrivateBytes));
+        OnPropertyChanged(nameof(DiskReadMBps));
     }
 
     private void UpdateDuration()

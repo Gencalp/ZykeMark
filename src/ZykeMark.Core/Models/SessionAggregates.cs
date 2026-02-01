@@ -9,4 +9,13 @@ public sealed record SessionAggregates(
     double OnePercentLowFps,
     double PointOnePercentLowFps,
     double? AvgCpuFrameTimeMs,
-    double? AvgGpuFrameTimeMs);
+    double? AvgGpuFrameTimeMs,
+    // Telemetry averages
+    double? AvgGpuUtilizationPercent = null,
+    double? AvgVramDedicatedMB = null,
+    double? AvgVramSharedMB = null,
+    double? AvgCpuProcessPercent = null,
+    double? AvgTopThreadCpuPercent = null,
+    double? AvgRamWorkingSetMB = null,
+    double? AvgRamPrivateBytesMB = null,
+    double? AvgDiskReadMBps = null);
