@@ -138,7 +138,7 @@ public sealed class FileSystemLocalStore : ILocalStore
         JsonSerializer.Serialize(writer, payload, _serializerOptions);
     }
 
-    private string GetSessionFolder(string sessionId) => Path.Combine(_rootPath, sessionId);
+    public string GetSessionFolder(string sessionId) => Path.Combine(_rootPath, sessionId);
 
     private string GetChunksFolder(string sessionId) => Path.Combine(GetSessionFolder(sessionId), "chunks");
 }
