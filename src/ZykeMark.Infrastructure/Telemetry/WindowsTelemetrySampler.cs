@@ -168,6 +168,9 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                     _samples.Add(sample);
                     _latestSample = sample;
                 }
+                
+                // Log telemetry tick for diagnostics
+                Log($"[Telemetry] tick: pid={_processId}, ws={sample.RamWorkingSetMB:F1}MB, private={sample.RamPrivateBytesMB:F1}MB, cpu={sample.CpuProcessPercent:F1}%, ioReadMBps={sample.DiskReadMBps:F2}");
             }
         }
         catch (Exception ex)

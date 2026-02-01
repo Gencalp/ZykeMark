@@ -18,6 +18,7 @@ public sealed class PresentMonCollector : ICollector
     private readonly IPresentMonRunner _runner;
     private readonly PresentMonCsvParser _parser;
     private readonly PresentMonRunOptions _runOptions;
+    private readonly ITelemetrySampler? _telemetrySampler;
     private readonly Action<string>? _logger;
 
     /// <summary>
@@ -34,7 +35,8 @@ public sealed class PresentMonCollector : ICollector
         PresentMonCsvParser parser,
         PresentMonRunOptions runOptions,
         string? sessionFolder = null,
-        Action<string>? logger = null)
+        Action<string>? logger = null,
+        ITelemetrySampler? telemetrySampler = null)
     {
         _localStore = localStore ?? throw new ArgumentNullException(nameof(localStore));
         _sessionId = string.IsNullOrWhiteSpace(sessionId)
@@ -45,6 +47,7 @@ public sealed class PresentMonCollector : ICollector
         _runner = runner ?? throw new ArgumentNullException(nameof(runner));
         _parser = parser ?? throw new ArgumentNullException(nameof(parser));
         _runOptions = runOptions ?? throw new ArgumentNullException(nameof(runOptions));
+        _telemetrySampler = telemetrySampler;
         _logger = logger;
     }
 
@@ -195,7 +198,10 @@ public sealed class PresentMonCollector : ICollector
             }
 
             var relativeTimestampMs = sample.TimestampMs - firstDataTimestampMs.GetValueOrDefault();
-            var normalizedSample = sample with { TimestampMs = relativeTimestampMs };
+            
+            // Attach latest telemetry sample if available
+            var telemetry = _telemetrySampler?.TryGetLatest();
+            var normalizedSample = sample with { TimestampMs = relativeTimestampMs, Telemetry = telemetry };
 
             samples.Add(normalizedSample);
             chunkSamples.Add(normalizedSample);
@@ -314,7 +320,10 @@ public sealed class PresentMonCollector : ICollector
                 }
 
                 var relativeTimestampMs = sample.TimestampMs - firstDataTimestampMs.GetValueOrDefault();
-                var normalizedSample = sample with { TimestampMs = relativeTimestampMs };
+                
+                // Attach latest telemetry sample if available
+                var telemetry = _telemetrySampler?.TryGetLatest();
+                var normalizedSample = sample with { TimestampMs = relativeTimestampMs, Telemetry = telemetry };
 
                 samples.Add(normalizedSample);
                 chunkSamples.Add(normalizedSample);
@@ -403,5 +412,9 @@ public sealed class PresentMonCollector : ICollector
             samples.ToArray());
 
         _localStore.AppendChunk(_sessionId, chunk);
+        
+        // Log chunk write with telemetry attachment count for diagnostics
+        var telemetryAttachedCount = samples.Count(s => s.Telemetry != null);
+        Log($"ChunkWrite: samples={samples.Count}, telemetryAttached={telemetryAttachedCount}");
     }
 }
