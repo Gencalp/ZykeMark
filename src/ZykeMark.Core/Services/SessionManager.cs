@@ -200,7 +200,7 @@ public sealed class SessionManager : ISessionManager
             messages.Add("See capture_diagnostics.json in session folder for full details");
             return string.Join(". ", messages);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or ArgumentException)
         {
             // If we can't read the diagnostics file, return the default message
             return defaultMessage;

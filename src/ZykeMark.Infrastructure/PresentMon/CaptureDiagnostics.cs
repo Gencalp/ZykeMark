@@ -190,7 +190,11 @@ public sealed class CaptureDiagnostics
             messages.Add("CSV file contains header but no data rows");
             if (CsvPreviewLines is { Count: > 1 })
             {
-                messages.Add($"Header: {CsvPreviewLines.FirstOrDefault(l => l.Contains("Application", StringComparison.OrdinalIgnoreCase))}");
+                var headerLine = CsvPreviewLines.FirstOrDefault(l => l.Contains("Application", StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrWhiteSpace(headerLine))
+                {
+                    messages.Add($"Header: {headerLine}");
+                }
             }
         }
 
