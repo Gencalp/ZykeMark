@@ -219,6 +219,16 @@ public sealed class SessionSummaryData
     public SessionMetadataData? Metadata { get; set; }
     public SessionAggregatesData? Aggregates { get; set; }
     public DataQualityData? DataQuality { get; set; }
+    
+    /// <summary>
+    /// Session status: "Completed" for successful sessions, "Failed" for sessions with 0 samples.
+    /// </summary>
+    public string? Status { get; set; }
+    
+    /// <summary>
+    /// Error message when Status is "Failed".
+    /// </summary>
+    public string? ErrorMessage { get; set; }
 }
 
 public sealed class SessionMetadataData
@@ -272,6 +282,16 @@ public sealed class SessionAggregatesData
     public double PointOnePercentLowFps { get; set; }
     public double? AvgCpuFrameTimeMs { get; set; }
     public double? AvgGpuFrameTimeMs { get; set; }
+    
+    // Telemetry aggregates (from real telemetry sampling)
+    public double? AvgGpuUtilizationPercent { get; set; }
+    public double? AvgVramDedicatedMB { get; set; }
+    public double? AvgVramSharedMB { get; set; }
+    public double? AvgCpuProcessPercent { get; set; }
+    public double? AvgTopThreadCpuPercent { get; set; }
+    public double? AvgRamWorkingSetMB { get; set; }
+    public double? AvgRamPrivateBytesMB { get; set; }
+    public double? AvgDiskReadMBps { get; set; }
 }
 
 public sealed class DataQualityData

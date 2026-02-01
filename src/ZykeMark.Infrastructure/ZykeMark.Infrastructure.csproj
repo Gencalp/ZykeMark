@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <PackageReference Include="QuestPDF" Version="2024.3.0" />
+    <!-- For Windows Performance Counters (GPU telemetry) -->
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
