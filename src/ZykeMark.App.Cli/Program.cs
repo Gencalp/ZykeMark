@@ -205,21 +205,18 @@ switch (command)
             {
                 Console.WriteLine("PresentMon may require administrator privileges.");
             }
+            return;
+        }
+        finally
+        {
+            // Stop and dispose telemetry sampler
             if (OperatingSystem.IsWindows() && telemetrySampler != null)
             {
                 telemetrySampler.Stop();
+                var telemetrySampleCount = telemetrySampler.GetSamples().Count;
+                Log($"Telemetry sampler stopped. Collected {telemetrySampleCount} samples.");
                 telemetrySampler.Dispose();
             }
-            return;
-        }
-
-        // Stop telemetry sampler
-        if (OperatingSystem.IsWindows() && telemetrySampler != null)
-        {
-            telemetrySampler.Stop();
-            var telemetrySampleCount = telemetrySampler.GetSamples().Count;
-            Log($"Telemetry sampler stopped. Collected {telemetrySampleCount} samples.");
-            telemetrySampler.Dispose();
         }
 
         var summaryPath = sessionManager.StopSession(metadata.SessionId, collector.LastCollectionDataQuality);
@@ -478,9 +475,13 @@ static int? ResolveProcessId(string? processName)
             return processes[0].Id;
         }
     }
-    catch
+    catch (ArgumentException)
     {
-        // Ignore exceptions
+        // Invalid process name
+    }
+    catch (InvalidOperationException)
+    {
+        // Process query failed
     }
 
     return null;
