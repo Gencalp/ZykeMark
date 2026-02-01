@@ -85,6 +85,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         ResetFiltersCommand = new RelayCommand(ResetFilters, () => true);
         BrowsePresentMonPathCommand = new RelayCommand(BrowsePresentMonPath, () => true);
         ValidatePresentMonPathCommand = new RelayCommand(ValidatePresentMonPath, () => true);
+        CopyResolvedPathCommand = new RelayCommand(CopyResolvedPathToClipboard, () => HasResolvedPresentMonPath);
         OpenSelectedSessionFolderCommand = new RelayCommand(OpenSelectedSessionFolder, () => SelectedSession is not null);
         OpenSelectedSessionReportCommand = new RelayCommand(OpenSelectedSessionReport, () => SelectedSession?.HasReport == true);
         OpenLastSessionFolderCommand = new RelayCommand(OpenLastSessionFolder, () => HasSessions);
@@ -307,6 +308,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string PresentMonValidationMessage { get; private set; } = string.Empty;
     public Brush PresentMonValidationBrush { get; private set; } = SuccessBrush;
     public Wpf.Ui.Controls.SymbolRegular PresentMonValidationIcon { get; private set; } = Wpf.Ui.Controls.SymbolRegular.CheckmarkCircle24;
+    public string? ResolvedPresentMonPath { get; private set; }
+    public bool HasResolvedPresentMonPath => !string.IsNullOrWhiteSpace(ResolvedPresentMonPath);
+    
+    public RelayCommand CopyResolvedPathCommand { get; }
 
     // Process selection
     public ProcessInfo? SelectedProcess
@@ -938,42 +943,50 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private void ValidatePresentMonPath()
     {
         ShowPresentMonValidation = true;
+        
+        // Use the path resolver to try auto-detection
+        var resolver = new ZykeMark.Infrastructure.PresentMon.PresentMonPathResolver();
+        var result = resolver.Resolve(string.IsNullOrWhiteSpace(PresentMonPath) ? null : PresentMonPath);
 
-        if (string.IsNullOrWhiteSpace(PresentMonPath))
+        if (result.IsFound)
         {
-            PresentMonValidationMessage = "Path is empty. Auto-detect will be used.";
-            PresentMonValidationBrush = NeutralBrush;
-            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.Info24;
-        }
-        else if (!System.IO.File.Exists(PresentMonPath))
-        {
-            PresentMonValidationMessage = "File not found. Please check the path.";
-            PresentMonValidationBrush = ErrorBrush;
-            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.ErrorCircle24;
-        }
-        else if (!PresentMonPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-        {
-            PresentMonValidationMessage = "File is not an executable.";
-            PresentMonValidationBrush = ErrorBrush;
-            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.ErrorCircle24;
-        }
-        else if (!PresentMonPath.Contains("PresentMon", StringComparison.OrdinalIgnoreCase))
-        {
-            PresentMonValidationMessage = "Warning: File name doesn't contain 'PresentMon'. Make sure this is the correct executable.";
-            PresentMonValidationBrush = NeutralBrush;
-            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.Warning24;
+            ResolvedPresentMonPath = result.ResolvedAbsolutePath;
+            PresentMonValidationMessage = $"Found via {result.Source}";
+            PresentMonValidationBrush = SuccessBrush;
+            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.CheckmarkCircle24;
         }
         else
         {
-            PresentMonValidationMessage = "Valid PresentMon executable found.";
-            PresentMonValidationBrush = SuccessBrush;
-            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.CheckmarkCircle24;
+            ResolvedPresentMonPath = null;
+            PresentMonValidationMessage = "Not found. " + (result.FailureReason?.Split('\n').FirstOrDefault() ?? "PresentMon could not be located.");
+            PresentMonValidationBrush = ErrorBrush;
+            PresentMonValidationIcon = Wpf.Ui.Controls.SymbolRegular.ErrorCircle24;
         }
 
         OnPropertyChanged(nameof(ShowPresentMonValidation));
         OnPropertyChanged(nameof(PresentMonValidationMessage));
         OnPropertyChanged(nameof(PresentMonValidationBrush));
         OnPropertyChanged(nameof(PresentMonValidationIcon));
+        OnPropertyChanged(nameof(ResolvedPresentMonPath));
+        OnPropertyChanged(nameof(HasResolvedPresentMonPath));
+    }
+    
+    private void CopyResolvedPathToClipboard()
+    {
+        if (!string.IsNullOrWhiteSpace(ResolvedPresentMonPath))
+        {
+            try
+            {
+                Clipboard.SetText(ResolvedPresentMonPath);
+                StatusMessage = "Path copied to clipboard.";
+                OnPropertyChanged(nameof(StatusMessage));
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Failed to copy: {ex.Message}";
+                OnPropertyChanged(nameof(StatusMessage));
+            }
+        }
     }
 
     private void OpenSessionFolderForItem(SessionListItem? item)

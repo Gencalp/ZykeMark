@@ -780,19 +780,20 @@ public sealed class PresentMonRunner : IPresentMonRunner
         _logger?.Invoke(message);
     }
 
-    private static string ResolveExecutablePath(string? providedPath)
+    private string ResolveExecutablePath(string? providedPath)
     {
-        if (!string.IsNullOrWhiteSpace(providedPath))
-        {
-            if (!File.Exists(providedPath))
-            {
-                throw new FileNotFoundException("PresentMon executable not found.", providedPath);
-            }
+        var resolver = new PresentMonPathResolver(msg => Log(msg));
+        var result = resolver.Resolve(providedPath);
 
-            return providedPath;
+        if (!result.IsFound)
+        {
+            throw new FileNotFoundException(
+                result.FailureReason ?? "PresentMon executable not found.",
+                providedPath ?? "PresentMon.exe");
         }
 
-        return "PresentMon.exe";
+        Log($"[PresentMon] Resolved path: {result.ResolvedAbsolutePath} (source: {result.Source})");
+        return result.ResolvedAbsolutePath!;
     }
 
     private static string BuildArguments(PresentMonRunOptions options, string? outputFile)

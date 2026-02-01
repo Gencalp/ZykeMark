@@ -150,7 +150,7 @@ public sealed class SessionOrchestrationService : IDisposable
         {
             try
             {
-                _telemetrySampler = new WindowsTelemetrySampler(msg => _logger.Log(msg));
+                _telemetrySampler = new WindowsTelemetrySampler(msg => _logger.Log(msg), _sessionFolder);
                 _telemetrySampler.Start(targetPid.Value);
                 _logger.Log($"Telemetry sampler started for PID {targetPid.Value}");
                 _logger.Log($"GPU telemetry available: {_telemetrySampler.IsGpuTelemetryAvailable}");
