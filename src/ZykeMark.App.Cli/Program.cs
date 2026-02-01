@@ -454,7 +454,7 @@ switch (command)
         else
         {
             Console.WriteLine($"To run a full diagnostic capture with PresentMon:");
-            Console.WriteLine($"  zykemark real-run --process_name {processName} --seconds {durationSeconds}");
+            Console.WriteLine($"  zykemark real-run --process_name \"{processName}\" --seconds {durationSeconds}");
             Console.WriteLine($"\nThis will create a session folder with:");
             Console.WriteLine($"  - chunks/chunk_*.json containing FrameSamples with attached Telemetry");
             Console.WriteLine($"  - summary.json with telemetry aggregates (AvgCpuProcessPercent, AvgRamWorkingSetMB, etc.)");

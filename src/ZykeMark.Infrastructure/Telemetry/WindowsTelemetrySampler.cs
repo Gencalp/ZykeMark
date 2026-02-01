@@ -159,25 +159,50 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                 return null;
             }
 
-            // Find the sample closest to the requested timestamp
-            TelemetrySample? closest = null;
-            var minDistance = double.MaxValue;
+            // Binary search for the closest sample (samples are already sorted by timestamp)
+            // This provides O(log n) performance instead of O(n) linear search
+            var left = 0;
+            var right = _samples.Count - 1;
 
-            foreach (var sample in _samples)
+            // Handle edge cases
+            if (!_samples[left].TimestampMs.HasValue)
             {
-                if (sample.TimestampMs.HasValue)
+                return _latestSample;
+            }
+            if (timestampMs <= _samples[left].TimestampMs!.Value)
+            {
+                return _samples[left];
+            }
+            if (!_samples[right].TimestampMs.HasValue)
+            {
+                return _latestSample;
+            }
+            if (timestampMs >= _samples[right].TimestampMs!.Value)
+            {
+                return _samples[right];
+            }
+
+            // Binary search to find the two samples bracketing the target timestamp
+            while (right - left > 1)
+            {
+                var mid = (left + right) / 2;
+                var midTs = _samples[mid].TimestampMs ?? 0;
+
+                if (midTs <= timestampMs)
                 {
-                    var distance = Math.Abs(sample.TimestampMs.Value - timestampMs);
-                    if (distance < minDistance)
-                    {
-                        minDistance = distance;
-                        closest = sample;
-                    }
+                    left = mid;
+                }
+                else
+                {
+                    right = mid;
                 }
             }
 
-            // Fall back to latest if no timestamped samples found
-            return closest ?? _latestSample;
+            // Return the closer of the two bracketing samples
+            var leftDistance = Math.Abs((_samples[left].TimestampMs ?? 0) - timestampMs);
+            var rightDistance = Math.Abs((_samples[right].TimestampMs ?? 0) - timestampMs);
+
+            return leftDistance <= rightDistance ? _samples[left] : _samples[right];
         }
     }
 

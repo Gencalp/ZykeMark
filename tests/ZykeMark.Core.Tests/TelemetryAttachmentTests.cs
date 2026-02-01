@@ -54,14 +54,15 @@ public class TelemetryAttachmentTests
         var sessionManager = new SessionManager(store, new ZykeMarkAggregator());
         var metadata = sessionManager.StartSession("TelemetryTest", "1.0.0", new RunConfig());
 
-        // CSV with timestamps: 1000ms, 1016.67ms, 1033.34ms (first frame at 1000ms)
-        // After normalization: 0ms, 16.67ms, 33.34ms
+        // CSV with raw timestamps: 1000ms, 1500ms, 2000ms (first frame at 1000ms)
+        // After normalization (subtracting first timestamp): 0ms, 500ms, 1000ms
+        // These normalized timestamps match the telemetry sample timestamps above
         var csvLines = new[]
         {
             "Application,ProcessID,SwapChainAddress,Runtime,CPUStartTime,FrameTime,MsCPUBusy,MsGPUTime",
-            "MyGame.exe,4242,0x1,DXGI,1000.0,16.67,5.2,6.1",  // Normalized to 0ms
-            "MyGame.exe,4242,0x1,DXGI,1500.0,16.67,5.1,6.0",  // Normalized to 500ms
-            "MyGame.exe,4242,0x1,DXGI,2000.0,16.67,5.0,5.9"   // Normalized to 1000ms
+            "MyGame.exe,4242,0x1,DXGI,1000.0,16.67,5.2,6.1",  // Raw 1000ms → Normalized 0ms → matches telemetry0
+            "MyGame.exe,4242,0x1,DXGI,1500.0,16.67,5.1,6.0",  // Raw 1500ms → Normalized 500ms → matches telemetry500
+            "MyGame.exe,4242,0x1,DXGI,2000.0,16.67,5.0,5.9"   // Raw 2000ms → Normalized 1000ms → matches telemetry1000
         };
 
         var runner = new FakePresentMonRunner(csvLines);
