@@ -19,7 +19,9 @@ public sealed record TelemetrySample(
     /// <summary>Process Private Bytes in MB</summary>
     double? RamPrivateBytesMB,
     /// <summary>Disk read rate in MB/s</summary>
-    double? DiskReadMBps)
+    double? DiskReadMBps,
+    /// <summary>Timestamp when this sample was collected (milliseconds since session start)</summary>
+    double? TimestampMs = null)
 {
     /// <summary>
     /// Gets the total VRAM usage (Dedicated + Shared) in MB.
@@ -31,5 +33,5 @@ public sealed record TelemetrySample(
     /// <summary>
     /// Creates an empty telemetry sample with all null values.
     /// </summary>
-    public static TelemetrySample Empty => new(null, null, null, null, null, null, null, null);
+    public static TelemetrySample Empty => new(null, null, null, null, null, null, null, null, null);
 }

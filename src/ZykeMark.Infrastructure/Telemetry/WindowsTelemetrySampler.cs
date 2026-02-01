@@ -36,6 +36,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
     private bool _isRunning;
     private bool _isGpuTelemetryAvailable;
     private TelemetrySample? _latestSample;
+    private DateTime _startTime;
     
     // CPU tracking
     private DateTime _lastCpuSampleTime;
@@ -57,6 +58,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
     public bool IsRunning => _isRunning;
     public bool IsGpuTelemetryAvailable => _isGpuTelemetryAvailable;
+    public double StartTimestampMs { get; private set; }
 
     public void Start(int processId)
     {
@@ -98,6 +100,10 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
         // Initialize GPU counters (may fail if not available)
         InitializeGpuCounters();
+
+        // Initialize timing
+        _startTime = DateTime.UtcNow;
+        StartTimestampMs = 0; // Relative timestamps start at 0
 
         lock (_lock)
         {
@@ -141,6 +147,37 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
         lock (_lock)
         {
             return _samples.ToArray();
+        }
+    }
+
+    public TelemetrySample? GetSampleAt(double timestampMs)
+    {
+        lock (_lock)
+        {
+            if (_samples.Count == 0)
+            {
+                return null;
+            }
+
+            // Find the sample closest to the requested timestamp
+            TelemetrySample? closest = null;
+            var minDistance = double.MaxValue;
+
+            foreach (var sample in _samples)
+            {
+                if (sample.TimestampMs.HasValue)
+                {
+                    var distance = Math.Abs(sample.TimestampMs.Value - timestampMs);
+                    if (distance < minDistance)
+                    {
+                        minDistance = distance;
+                        closest = sample;
+                    }
+                }
+            }
+
+            // Fall back to latest if no timestamped samples found
+            return closest ?? _latestSample;
         }
     }
 
@@ -205,6 +242,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
         // Capture timestamp once for consistent elapsed time calculations
         var sampleTime = DateTime.UtcNow;
+        var timestampMs = (sampleTime - _startTime).TotalMilliseconds;
 
         // Collect CPU metrics (pass the sample time to ensure consistency)
         var cpuProcessPercent = CollectProcessCpuPercent(sampleTime);
@@ -230,7 +268,8 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
             TopThreadCpuPercent: topThreadCpuPercent,
             RamWorkingSetMB: ramWorkingSetMB,
             RamPrivateBytesMB: ramPrivateBytesMB,
-            DiskReadMBps: diskReadMBps);
+            DiskReadMBps: diskReadMBps,
+            TimestampMs: timestampMs);
     }
 
     #region CPU Metrics
