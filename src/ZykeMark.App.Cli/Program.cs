@@ -147,15 +147,27 @@ switch (command)
             return;
         }
 
+        // Create CaptureTarget to detect multi-process applications
+        var captureTarget = new CaptureTarget(
+            ProcessName: processName,
+            ProcessId: processId,
+            SelectionMode: processId.HasValue ? CaptureTarget.ModePid : CaptureTarget.ModeName);
+
         var store = new FileSystemLocalStore();
         var sessionManager = new SessionManager(store, new ZykeMarkAggregator());
-        var metadata = sessionManager.StartSession(gameName, buildVersion, new RunConfig());
+        var metadata = sessionManager.StartSession(gameName, buildVersion, new RunConfig(), captureTarget);
 
         // Get session folder path
         var sessionFolder = Path.Combine(GetRootPath(), metadata.SessionId);
 
         // Create logger that outputs to console for PresentMon diagnostics
         void Log(string message) => Console.WriteLine(message);
+
+        // Log multi-process application detection
+        if (captureTarget.IsMultiProcessApplication)
+        {
+            Log($"Detected multi-process application '{processName}' - capturing by process name for all child processes");
+        }
 
         // Resolve process ID for telemetry (required for Windows telemetry sampling)
         var telemetryPid = processId ?? ResolveProcessId(processName);
@@ -182,7 +194,11 @@ switch (command)
             Log("Warning: Could not resolve process ID for telemetry sampling. Telemetry will be unavailable.");
         }
 
-        var runOptions = new PresentMonRunOptions(presentMonPath, processName, processId, (int)Math.Ceiling(durationSeconds));
+        // For multi-process applications (browsers, Electron apps), prefer process name
+        // to capture frames from all child processes including the GPU process
+        var preferProcessName = captureTarget.IsMultiProcessApplication;
+
+        var runOptions = new PresentMonRunOptions(presentMonPath, processName, processId, (int)Math.Ceiling(durationSeconds), PreferProcessName: preferProcessName);
         var collector = new PresentMonCollector(
             store,
             metadata.SessionId,

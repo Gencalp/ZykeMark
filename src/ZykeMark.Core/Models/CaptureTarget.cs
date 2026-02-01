@@ -21,6 +21,48 @@ public sealed record CaptureTarget(
     public const string ModeAuto = "auto";
 
     /// <summary>
+    /// Known multi-process applications that require capturing by process name instead of PID.
+    /// These applications use separate processes for GPU rendering (e.g., browsers, Electron apps).
+    /// When targeting these by PID, the main process may not produce frames - the GPU process does.
+    /// </summary>
+    private static readonly HashSet<string> MultiProcessApplications = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Browsers
+        "msedge",
+        "msedge.exe",
+        "chrome",
+        "chrome.exe",
+        "firefox",
+        "firefox.exe",
+        "brave",
+        "brave.exe",
+        "opera",
+        "opera.exe",
+        "vivaldi",
+        "vivaldi.exe",
+        
+        // Electron-based applications
+        "slack",
+        "slack.exe",
+        "discord",
+        "discord.exe",
+        "code",
+        "code.exe",
+        "teams",
+        "teams.exe",
+        "spotify",
+        "spotify.exe"
+    };
+
+    /// <summary>
+    /// Returns true if the target process is a known multi-process application
+    /// that requires capturing by process name instead of process ID.
+    /// </summary>
+    public bool IsMultiProcessApplication => 
+        !string.IsNullOrWhiteSpace(ProcessName) && 
+        MultiProcessApplications.Contains(ProcessName);
+
+    /// <summary>
     /// Returns a human-readable display string for the capture target.
     /// </summary>
     public string ToDisplayString()
