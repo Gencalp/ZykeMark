@@ -200,9 +200,12 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
             return TelemetrySample.Empty;
         }
 
-        // Collect CPU metrics
-        var cpuProcessPercent = CollectProcessCpuPercent();
-        var topThreadCpuPercent = CollectTopThreadCpuPercent();
+        // Capture timestamp once for consistent elapsed time calculations
+        var sampleTime = DateTime.UtcNow;
+
+        // Collect CPU metrics (pass the sample time to ensure consistency)
+        var cpuProcessPercent = CollectProcessCpuPercent(sampleTime);
+        var topThreadCpuPercent = CollectTopThreadCpuPercent(sampleTime);
 
         // Collect RAM metrics
         var ramWorkingSetMB = CollectRamWorkingSetMB();
@@ -229,7 +232,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
     #region CPU Metrics
 
-    private double? CollectProcessCpuPercent()
+    private double? CollectProcessCpuPercent(DateTime sampleTime)
     {
         if (_process == null)
         {
@@ -238,10 +241,9 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
         try
         {
-            var currentTime = DateTime.UtcNow;
             var currentCpuTime = _process.TotalProcessorTime;
             
-            var elapsedSeconds = (currentTime - _lastCpuSampleTime).TotalSeconds;
+            var elapsedSeconds = (sampleTime - _lastCpuSampleTime).TotalSeconds;
             if (elapsedSeconds <= 0)
             {
                 return null;
@@ -250,7 +252,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
             var cpuUsedSeconds = (currentCpuTime - _lastProcessCpuTime).TotalSeconds;
             var cpuPercent = (cpuUsedSeconds / elapsedSeconds / Environment.ProcessorCount) * 100.0;
 
-            _lastCpuSampleTime = currentTime;
+            _lastCpuSampleTime = sampleTime;
             _lastProcessCpuTime = currentCpuTime;
 
             return Math.Clamp(cpuPercent, 0, 100);
@@ -290,7 +292,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
         }
     }
 
-    private double? CollectTopThreadCpuPercent()
+    private double? CollectTopThreadCpuPercent(DateTime sampleTime)
     {
         if (_process == null)
         {
@@ -299,11 +301,17 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
         try
         {
-            var currentTime = DateTime.UtcNow;
-            var elapsedSeconds = (currentTime - _lastCpuSampleTime).TotalSeconds;
+            var elapsedSeconds = (sampleTime - _lastCpuSampleTime).TotalSeconds;
+            // Note: _lastCpuSampleTime was already updated by CollectProcessCpuPercent,
+            // so for thread calculations we use the previous sample time stored before the update.
+            // Since we call CollectProcessCpuPercent first, we need to use the elapsed time from that call.
+            // Actually, both methods now receive the same sampleTime, so elapsed is based on the same start.
+            // The _lastCpuSampleTime is updated in CollectProcessCpuPercent, so this method should be called
+            // after that and will see the updated time. We'll use the elapsed from process CPU method.
             if (elapsedSeconds <= 0)
             {
-                return null;
+                // Use a fallback elapsed time based on sample interval
+                elapsedSeconds = SampleIntervalMs / 1000.0;
             }
 
             double maxThreadCpuPercent = 0;
@@ -319,7 +327,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                     if (_threadCpuTimes.TryGetValue(thread.Id, out var previousTime))
                     {
                         var threadCpuUsedSeconds = (currentThreadCpuTime - previousTime).TotalSeconds;
-                        var threadCpuPercent = (threadCpuUsedSeconds / elapsedSeconds) * 100.0;
+                        var threadCpuPercent = (threadCpuUsedSeconds / (SampleIntervalMs / 1000.0)) * 100.0;
                         maxThreadCpuPercent = Math.Max(maxThreadCpuPercent, threadCpuPercent);
                     }
                 }

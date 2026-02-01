@@ -1332,8 +1332,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 {
                     _selectedTheme = settings.Theme ?? "Dark";
                     _presentMonPath = settings.PresentMonPath ?? "";
-                    // Migrate from legacy UseRealCapture to UseSimulatedMode (inverted)
-                    _useSimulatedMode = settings.UseSimulatedMode ?? !settings.UseRealCapture;
+                    // Prefer UseSimulatedMode if explicitly set, otherwise migrate from legacy UseRealCapture
+                    _useSimulatedMode = settings.UseSimulatedMode.HasValue 
+                        ? settings.UseSimulatedMode.Value 
+                        : !settings.UseRealCapture;
                     OnPropertyChanged(nameof(SelectedTheme));
                     OnPropertyChanged(nameof(SelectedThemeIndex));
                     OnPropertyChanged(nameof(PresentMonPath));

@@ -15,6 +15,8 @@ namespace ZykeMark.App.Desktop.Services;
 public sealed class SessionOrchestrationService : IDisposable
 {
     private const int RealCaptureChunkIntervalSeconds = 10;
+    private const int PresentMonTimeoutBufferSeconds = 30;
+    private const int RealCaptureStopTimeoutSeconds = 5;
     
     private readonly FileSystemLocalStore _localStore;
     private readonly SessionManager _sessionManager;
@@ -221,6 +223,7 @@ public sealed class SessionOrchestrationService : IDisposable
         var chunkIndex = 1;
         var allSamples = new List<FrameSample>();
         var firstTimestampMs = (double?)null;
+        var sessionStartUtc = _sessionMetadata.StartedAtUtc;
 
         _logger.Log($"Real capture loop starting - collecting in {RealCaptureChunkIntervalSeconds}s intervals");
 
@@ -228,10 +231,14 @@ public sealed class SessionOrchestrationService : IDisposable
         {
             try
             {
+                var chunkStartUtc = DateTime.UtcNow;
+                
                 // Collect samples for one interval
                 var samples = await CollectFrameSamplesAsync(
                     TimeSpan.FromSeconds(RealCaptureChunkIntervalSeconds),
                     cancellationToken);
+
+                var chunkEndUtc = DateTime.UtcNow;
 
                 if (samples.Count == 0)
                 {
@@ -241,7 +248,6 @@ public sealed class SessionOrchestrationService : IDisposable
 
                 // Normalize timestamps and attach telemetry
                 var chunkSamples = new List<FrameSample>();
-                var chunkStartUtc = DateTime.UtcNow;
 
                 foreach (var sample in samples)
                 {
@@ -260,11 +266,11 @@ public sealed class SessionOrchestrationService : IDisposable
                     allSamples.Add(enrichedSample);
                 }
 
-                // Create and save chunk
+                // Create and save chunk with accurate start/end times
                 var chunk = new RawSampleChunk(
                     chunkIndex,
-                    chunkStartUtc.AddMilliseconds(-RealCaptureChunkIntervalSeconds * 1000),
                     chunkStartUtc,
+                    chunkEndUtc,
                     chunkSamples.ToArray());
 
                 _localStore.AppendChunk(_sessionId, chunk);
@@ -313,9 +319,9 @@ public sealed class SessionOrchestrationService : IDisposable
         var runner = new PresentMonRunner(msg => _logger.Log(msg));
         var parser = new PresentMonCsvParser();
 
-        // Run PresentMon to file
+        // Run PresentMon to file with timeout buffer for process cleanup
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(duration + TimeSpan.FromSeconds(30)); // Buffer for process cleanup
+        timeoutCts.CancelAfter(duration + TimeSpan.FromSeconds(PresentMonTimeoutBufferSeconds));
 
         try
         {
@@ -534,7 +540,7 @@ public sealed class SessionOrchestrationService : IDisposable
             _realCaptureCts.Cancel();
             try
             {
-                _realCaptureTask?.Wait(TimeSpan.FromSeconds(5));
+                _realCaptureTask?.Wait(TimeSpan.FromSeconds(RealCaptureStopTimeoutSeconds));
             }
             catch (AggregateException)
             {
