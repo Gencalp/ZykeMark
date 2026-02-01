@@ -100,6 +100,21 @@
                        Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
             <ui:Card Margin="0,0,0,24">
                 <StackPanel>
+                    <!-- Real Capture Mode Toggle -->
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Use Real Telemetry Capture" FontWeight="SemiBold"
+                                       Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            <TextBlock Text="{Binding CaptureModeDescription}" FontSize="12"
+                                       Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding UseRealCapture, Mode=TwoWay}"/>
+                    </Grid>
+
                     <Grid Margin="0,0,0,16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>

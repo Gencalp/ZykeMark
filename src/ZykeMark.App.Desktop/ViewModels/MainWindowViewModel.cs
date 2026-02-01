@@ -24,7 +24,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private static readonly SolidColorBrush NeutralBrush = new(Color.FromRgb(61, 61, 61));
     private static readonly SolidColorBrush WarningBrush = new(Color.FromRgb(255, 152, 0));
 
-    private readonly SessionOrchestrationService _service;
+    private SessionOrchestrationService _service;
     private readonly SessionDiscoveryService _discoveryService;
     private readonly DispatcherTimer _durationTimer;
     private readonly DispatcherTimer _countdownTimer;
@@ -46,6 +46,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private ProcessInfo? _selectedProcess;
     private int _selectedSortIndex;
     private string _selectedTheme = "Dark";
+    private bool _useRealCapture;
     private CancellationTokenSource? _countdownCts;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -385,6 +386,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    // Real Capture Mode
+    public bool UseRealCapture
+    {
+        get => _useRealCapture;
+        set
+        {
+            if (SetField(ref _useRealCapture, value))
+            {
+                SaveSettings();
+                OnPropertyChanged(nameof(CaptureModeDescription));
+            }
+        }
+    }
+
+    public string CaptureModeDescription => _useRealCapture
+        ? "Using PresentMon for real telemetry capture"
+        : "Using simulated data (for testing/demo purposes)";
     private SessionState State
     {
         get => _state;
@@ -486,13 +504,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             _samples.Clear();
             _pausedSamples.Clear();
 
+            // Recreate service with current capture mode settings
+            RecreateServiceWithCurrentSettings();
+
             // Build CaptureTarget from the current process selection
             var captureTarget = BuildCaptureTarget();
 
             _metadata = _service.StartSession(ProcessName, BuildVersion, new RunConfig(), captureTarget);
             _startUtc = DateTime.UtcNow;
             _durationTimer.Start();
-            StatusMessage = "Session started.";
+            
+            var modeText = _useRealCapture ? "real capture (PresentMon)" : "simulated mode";
+            StatusMessage = $"Session started in {modeText}.";
             OnPropertyChanged(nameof(SessionFolder));
             OnPropertyChanged(nameof(CurrentCaptureTargetDisplay));
             OnPropertyChanged(nameof(CurrentSessionId));
@@ -502,6 +525,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             HandleError("Failed to start session.", ex);
             State = SessionState.Error;
         }
+    }
+
+    /// <summary>
+    /// Disposes the current service and creates a new one with current settings.
+    /// </summary>
+    private void RecreateServiceWithCurrentSettings()
+    {
+        // Unsubscribe from previous service events
+        _service.ChunkReceived -= OnChunkReceived;
+        _service.Error -= OnServiceError;
+        _service.Dispose();
+
+        // Create service with current capture mode settings
+        _service = new SessionOrchestrationService(
+            useSimulatedMode: !_useRealCapture,
+            processName: ProcessName,
+            processId: _selectedProcessId,
+            presentMonPath: string.IsNullOrWhiteSpace(_presentMonPath) ? null : _presentMonPath);
+        _service.ChunkReceived += OnChunkReceived;
+        _service.Error += OnServiceError;
     }
 
     /// <summary>
@@ -1212,9 +1255,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 {
                     _selectedTheme = settings.Theme ?? "Dark";
                     _presentMonPath = settings.PresentMonPath ?? "";
+                    _useRealCapture = settings.UseRealCapture;
                     OnPropertyChanged(nameof(SelectedTheme));
                     OnPropertyChanged(nameof(SelectedThemeIndex));
                     OnPropertyChanged(nameof(PresentMonPath));
+                    OnPropertyChanged(nameof(UseRealCapture));
+                    OnPropertyChanged(nameof(CaptureModeDescription));
 
                     // Apply theme on load
                     Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
@@ -1247,7 +1293,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             var settings = new AppSettings
             {
                 Theme = _selectedTheme,
-                PresentMonPath = _presentMonPath
+                PresentMonPath = _presentMonPath,
+                UseRealCapture = _useRealCapture
             };
 
             var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
@@ -1321,4 +1368,5 @@ public sealed class AppSettings
 {
     public string? Theme { get; set; }
     public string? PresentMonPath { get; set; }
+    public bool UseRealCapture { get; set; }
 }
