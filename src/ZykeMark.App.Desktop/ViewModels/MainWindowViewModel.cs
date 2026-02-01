@@ -46,7 +46,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private ProcessInfo? _selectedProcess;
     private int _selectedSortIndex;
     private string _selectedTheme = "Dark";
-    private bool _useRealCapture;
+    private bool _useSimulatedMode; // Default is false = real capture mode
     private CancellationTokenSource? _countdownCts;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -397,13 +397,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    // Real Capture Mode
-    public bool UseRealCapture
+    // Demo Mode toggle - OFF (default) = real capture, ON = simulated data
+    public bool UseSimulatedMode
     {
-        get => _useRealCapture;
+        get => _useSimulatedMode;
         set
         {
-            if (SetField(ref _useRealCapture, value))
+            if (SetField(ref _useSimulatedMode, value))
             {
                 SaveSettings();
                 OnPropertyChanged(nameof(CaptureModeDescription));
@@ -411,9 +411,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    public string CaptureModeDescription => _useRealCapture
-        ? "Using PresentMon for real telemetry capture"
-        : "Using simulated data (for testing/demo purposes)";
+    // Legacy property for backward compatibility with settings file
+    public bool UseRealCapture
+    {
+        get => !_useSimulatedMode;
+        set => UseSimulatedMode = !value;
+    }
+
+    public string CaptureModeDescription => _useSimulatedMode
+        ? "Using simulated data for testing/demo purposes"
+        : "Using real capture (PresentMon + system telemetry)";
+        
     private SessionState State
     {
         get => _state;
@@ -525,7 +533,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             _startUtc = DateTime.UtcNow;
             _durationTimer.Start();
             
-            var modeText = _useRealCapture ? "real capture (PresentMon)" : "simulated mode";
+            var modeText = _useSimulatedMode ? "simulated mode (demo)" : "real capture (PresentMon + telemetry)";
             StatusMessage = $"Session started in {modeText}.";
             OnPropertyChanged(nameof(SessionFolder));
             OnPropertyChanged(nameof(CurrentCaptureTargetDisplay));
@@ -550,7 +558,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
         // Create service with current capture mode settings
         _service = new SessionOrchestrationService(
-            useSimulatedMode: !_useRealCapture,
+            useSimulatedMode: _useSimulatedMode,
             processName: ProcessName,
             processId: _selectedProcessId,
             presentMonPath: string.IsNullOrWhiteSpace(_presentMonPath) ? null : _presentMonPath);
@@ -1310,11 +1318,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 {
                     _selectedTheme = settings.Theme ?? "Dark";
                     _presentMonPath = settings.PresentMonPath ?? "";
-                    _useRealCapture = settings.UseRealCapture;
+                    // Migrate from legacy UseRealCapture to UseSimulatedMode (inverted)
+                    _useSimulatedMode = settings.UseSimulatedMode ?? !settings.UseRealCapture;
                     OnPropertyChanged(nameof(SelectedTheme));
                     OnPropertyChanged(nameof(SelectedThemeIndex));
                     OnPropertyChanged(nameof(PresentMonPath));
-                    OnPropertyChanged(nameof(UseRealCapture));
+                    OnPropertyChanged(nameof(UseSimulatedMode));
                     OnPropertyChanged(nameof(CaptureModeDescription));
 
                     // Apply theme on load
@@ -1349,7 +1358,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             {
                 Theme = _selectedTheme,
                 PresentMonPath = _presentMonPath,
-                UseRealCapture = _useRealCapture
+                UseSimulatedMode = _useSimulatedMode
             };
 
             var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
@@ -1423,5 +1432,16 @@ public sealed class AppSettings
 {
     public string? Theme { get; set; }
     public string? PresentMonPath { get; set; }
+    
+    /// <summary>
+    /// New property: When true, use simulated (demo) data instead of real capture.
+    /// Default is null (false) which means real capture is used.
+    /// </summary>
+    public bool? UseSimulatedMode { get; set; }
+    
+    /// <summary>
+    /// Legacy property for backward compatibility. Deprecated - use UseSimulatedMode instead.
+    /// UseRealCapture=true was the old setting for real capture.
+    /// </summary>
     public bool UseRealCapture { get; set; }
 }
