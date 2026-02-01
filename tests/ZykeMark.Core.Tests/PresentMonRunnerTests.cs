@@ -278,4 +278,32 @@ public class PresentMonRunnerTests
         Assert.Equal("C:\\Sessions\\new-session", updatedOptions.SessionFolder);
         Assert.Equal("Game.exe", updatedOptions.ProcessName); // Preserved from original
     }
+
+    [Fact]
+    public void RunOptions_PreferProcessName_DefaultsToFalse()
+    {
+        var options = new PresentMonRunOptions(
+            PresentMonPath: null,
+            ProcessName: "Game.exe",
+            ProcessId: 1234,
+            DurationSeconds: 10);
+
+        // PreferProcessName should default to false
+        Assert.False(options.PreferProcessName);
+    }
+
+    [Fact]
+    public void RunOptions_WithPreferProcessName_PreservesValue()
+    {
+        var options = new PresentMonRunOptions(
+            PresentMonPath: null,
+            ProcessName: "msedge.exe",
+            ProcessId: 9068,
+            DurationSeconds: 30,
+            PreferProcessName: true);
+
+        Assert.True(options.PreferProcessName);
+        Assert.Equal("msedge.exe", options.ProcessName);
+        Assert.Equal(9068, options.ProcessId);
+    }
 }

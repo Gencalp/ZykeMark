@@ -6,4 +6,5 @@ public sealed record PresentMonRunOptions(
     int? ProcessId,
     int DurationSeconds,
     string? SessionId = null,
-    string? SessionFolder = null);
+    string? SessionFolder = null,
+    bool PreferProcessName = false);

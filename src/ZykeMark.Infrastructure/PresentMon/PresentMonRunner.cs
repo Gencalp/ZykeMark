@@ -705,13 +705,32 @@ public sealed class PresentMonRunner : IPresentMonRunner
         parts.Add(options.DurationSeconds.ToString());
         parts.Add("--terminate_after_timed");
 
-        if (!string.IsNullOrWhiteSpace(options.ProcessName))
+        // Process targeting strategy:
+        // - When PreferProcessName is true and ProcessName is available, use --process_name
+        //   This captures ALL processes with that name (important for multi-process apps like browsers)
+        // - When PreferProcessName is false, prefer --process_id for precise targeting
+        // - Fall back to the other option if the preferred one is not available
+        if (options.PreferProcessName && !string.IsNullOrWhiteSpace(options.ProcessName))
         {
+            // Multi-process app mode: use process name to capture all child processes (e.g., browser GPU process)
+            parts.Add("--process_name");
+            parts.Add(options.ProcessName!);
+        }
+        else if (!options.PreferProcessName && options.ProcessId.HasValue)
+        {
+            // Single process mode: use process ID for precise targeting
+            parts.Add("--process_id");
+            parts.Add(options.ProcessId.Value.ToString());
+        }
+        else if (!string.IsNullOrWhiteSpace(options.ProcessName))
+        {
+            // Fallback to process name if no PID
             parts.Add("--process_name");
             parts.Add(options.ProcessName!);
         }
         else if (options.ProcessId.HasValue)
         {
+            // Fallback to PID if no process name
             parts.Add("--process_id");
             parts.Add(options.ProcessId.Value.ToString());
         }

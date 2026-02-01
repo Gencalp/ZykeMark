@@ -29,6 +29,7 @@ public sealed class SessionOrchestrationService : IDisposable
     private string? _chunksFolder;
     private SessionMetadata? _sessionMetadata;
     private DataQuality? _lastCollectionDataQuality;
+    private CaptureTarget? _captureTarget;
 
     // Configuration for collector mode
     private readonly bool _useSimulatedMode;
@@ -89,8 +90,13 @@ public sealed class SessionOrchestrationService : IDisposable
             if (captureTarget is not null)
             {
                 _logger.Log($"Capture target: {captureTarget.ToDisplayString()}");
+                if (captureTarget.IsMultiProcessApplication)
+                {
+                    _logger.Log($"Detected multi-process application - will capture by process name for all child processes");
+                }
             }
 
+            _captureTarget = captureTarget;
             var metadata = _sessionManager.StartSession(gameName, buildVersion, runConfig, captureTarget);
             _sessionMetadata = metadata;
             _sessionId = metadata.SessionId;
@@ -311,13 +317,18 @@ public sealed class SessionOrchestrationService : IDisposable
             return Array.Empty<FrameSample>();
         }
 
+        // For multi-process applications (browsers, Electron apps), prefer process name
+        // to capture frames from all child processes including the GPU process
+        var preferProcessName = _captureTarget?.IsMultiProcessApplication ?? false;
+
         var runOptions = new PresentMonRunOptions(
             _presentMonPath,
             _processName,
             _processId,
             (int)Math.Ceiling(duration.TotalSeconds),
             SessionId: _sessionId,
-            SessionFolder: _sessionFolder);
+            SessionFolder: _sessionFolder,
+            PreferProcessName: preferProcessName);
 
         var runner = new PresentMonRunner(msg => _logger.Log(msg));
         var parser = new PresentMonCsvParser();
@@ -405,11 +416,16 @@ public sealed class SessionOrchestrationService : IDisposable
             _logger.Log($"Starting PresentMon collection for {duration.TotalSeconds} seconds");
             _logger.Log($"Target process: {_processName ?? $"PID {_processId}"}");
 
+            // For multi-process applications (browsers, Electron apps), prefer process name
+            // to capture frames from all child processes including the GPU process
+            var preferProcessName = _captureTarget?.IsMultiProcessApplication ?? false;
+
             var runOptions = new PresentMonRunOptions(
                 _presentMonPath,
                 _processName,
                 _processId,
-                (int)Math.Ceiling(duration.TotalSeconds));
+                (int)Math.Ceiling(duration.TotalSeconds),
+                PreferProcessName: preferProcessName);
 
             var runner = new PresentMonRunner(msg => _logger.Log(msg));
             var parser = new PresentMonCsvParser();
