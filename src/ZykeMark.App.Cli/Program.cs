@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.Versioning;
 using System.Text.Json;
 using ZykeMark.App.Cli.Collectors;
 using ZykeMark.Core.Models;
@@ -6,6 +7,7 @@ using ZykeMark.Core.Services;
 using ZykeMark.Infrastructure.Collectors;
 using ZykeMark.Infrastructure.PresentMon;
 using ZykeMark.Infrastructure.Reporting;
+using ZykeMark.Infrastructure.Telemetry;
 
 if (args.Length == 0)
 {
@@ -155,6 +157,31 @@ switch (command)
         // Create logger that outputs to console for PresentMon diagnostics
         void Log(string message) => Console.WriteLine(message);
 
+        // Resolve process ID for telemetry (required for Windows telemetry sampling)
+        var telemetryPid = processId ?? ResolveProcessId(processName);
+        
+        // Start telemetry sampler if we have a valid PID (Windows only)
+        WindowsTelemetrySampler? telemetrySampler = null;
+        if (OperatingSystem.IsWindows() && telemetryPid.HasValue)
+        {
+            try
+            {
+                telemetrySampler = new WindowsTelemetrySampler(Log);
+                telemetrySampler.Start(telemetryPid.Value);
+                Log($"Telemetry sampler started for PID {telemetryPid.Value}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Warning: Could not start telemetry sampler: {ex.Message}");
+                telemetrySampler?.Dispose();
+                telemetrySampler = null;
+            }
+        }
+        else if (telemetryPid is null)
+        {
+            Log("Warning: Could not resolve process ID for telemetry sampling. Telemetry will be unavailable.");
+        }
+
         var runOptions = new PresentMonRunOptions(presentMonPath, processName, processId, (int)Math.Ceiling(durationSeconds));
         var collector = new PresentMonCollector(
             store,
@@ -164,7 +191,8 @@ switch (command)
             new PresentMonCsvParser(),
             runOptions,
             sessionFolder,
-            Log);
+            Log,
+            telemetrySampler);
 
         try
         {
@@ -178,6 +206,17 @@ switch (command)
                 Console.WriteLine("PresentMon may require administrator privileges.");
             }
             return;
+        }
+        finally
+        {
+            // Stop and dispose telemetry sampler
+            if (OperatingSystem.IsWindows() && telemetrySampler != null)
+            {
+                telemetrySampler.Stop();
+                var telemetrySampleCount = telemetrySampler.GetSamples().Count;
+                Log($"Telemetry sampler stopped. Collected {telemetrySampleCount} samples.");
+                telemetrySampler.Dispose();
+            }
         }
 
         var summaryPath = sessionManager.StopSession(metadata.SessionId, collector.LastCollectionDataQuality);
@@ -221,6 +260,100 @@ switch (command)
 
         return;
     }
+    case "test-telemetry":
+    {
+        // CLI command to test WindowsTelemetrySampler independently
+        var processIdValue = GetOptionValue(args, "--process_id");
+        var processName = GetOptionValue(args, "--process_name");
+        var secondsValue = GetOptionValue(args, "--seconds");
+
+        var durationSeconds = 3.0;
+        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, NumberStyles.Float, CultureInfo.InvariantCulture, out durationSeconds))
+        {
+            Console.WriteLine("Invalid value for --seconds.");
+            return;
+        }
+
+        int? processId = null;
+        if (!string.IsNullOrWhiteSpace(processIdValue))
+        {
+            if (!int.TryParse(processIdValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedProcessId))
+            {
+                Console.WriteLine("Invalid value for --process_id.");
+                return;
+            }
+            processId = parsedProcessId;
+        }
+
+        // If only process name is provided, resolve to PID
+        if (processId is null && !string.IsNullOrWhiteSpace(processName))
+        {
+            processId = ResolveProcessId(processName);
+            if (processId is null)
+            {
+                Console.WriteLine($"Could not find process with name: {processName}");
+                return;
+            }
+            Console.WriteLine($"Resolved process '{processName}' to PID {processId}");
+        }
+
+        if (processId is null)
+        {
+            Console.WriteLine("--process_id or --process_name is required.");
+            return;
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("test-telemetry is only supported on Windows.");
+            return;
+        }
+
+        Console.WriteLine($"Testing telemetry sampler for PID {processId} for {durationSeconds} seconds...");
+        
+        try
+        {
+            using var sampler = new WindowsTelemetrySampler(msg => Console.WriteLine(msg));
+            sampler.Start(processId.Value);
+            
+            // Wait for samples
+            Thread.Sleep(TimeSpan.FromSeconds(durationSeconds));
+            
+            sampler.Stop();
+            
+            var samples = sampler.GetSamples();
+            Console.WriteLine($"\nCollected {samples.Count} telemetry samples:");
+            
+            foreach (var sample in samples.Take(5))
+            {
+                Console.WriteLine($"  CPU={sample.CpuProcessPercent:F1}%, TopThread={sample.TopThreadCpuPercent:F1}%, WS={sample.RamWorkingSetMB:F1}MB, Private={sample.RamPrivateBytesMB:F1}MB, DiskRead={sample.DiskReadMBps:F2}MB/s, GPU={sample.GpuUtilizationPercent?.ToString("F1") ?? "n/a"}%");
+            }
+            
+            if (samples.Count > 5)
+            {
+                Console.WriteLine($"  ... and {samples.Count - 5} more samples");
+            }
+            
+            // Check if core metrics are non-null
+            var hasWorkingSet = samples.Any(s => s.RamWorkingSetMB.HasValue);
+            var hasPrivate = samples.Any(s => s.RamPrivateBytesMB.HasValue);
+            var hasCpu = samples.Any(s => s.CpuProcessPercent.HasValue);
+            var hasDisk = samples.Any(s => s.DiskReadMBps.HasValue);
+            
+            Console.WriteLine($"\nMetric availability:");
+            Console.WriteLine($"  RamWorkingSetMB: {(hasWorkingSet ? "OK" : "MISSING")}");
+            Console.WriteLine($"  RamPrivateBytesMB: {(hasPrivate ? "OK" : "MISSING")}");
+            Console.WriteLine($"  CpuProcessPercent: {(hasCpu ? "OK" : "MISSING")}");
+            Console.WriteLine($"  DiskReadMBps: {(hasDisk ? "OK" : "MISSING")}");
+            Console.WriteLine($"  GPU telemetry available: {sampler.IsGpuTelemetryAvailable}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+        
+        return;
+    }
     default:
         Console.WriteLine("Unknown command.");
         PrintUsage();
@@ -237,6 +370,7 @@ static void PrintUsage()
     Console.WriteLine("  zykemark demo-run --seconds 15 --seed 123");
     Console.WriteLine("  zykemark real-run --process_name \"MyGame.exe\" --seconds 15 --presentmon-path \"C:\\\\tools\\\\PresentMon.exe\"");
     Console.WriteLine("  zykemark export-pdf --sessionId <id> [--out \"C:\\\\path\\\\report.pdf\"]");
+    Console.WriteLine("  zykemark test-telemetry --process_id <pid> [--seconds 3]");
 }
 
 static string? GetOptionValue(string[] arguments, string name)
@@ -319,4 +453,36 @@ static SessionMetadata? TryGetLatestMetadata()
     }
 
     return latest;
+}
+
+static int? ResolveProcessId(string? processName)
+{
+    if (string.IsNullOrWhiteSpace(processName))
+    {
+        return null;
+    }
+
+    try
+    {
+        // Remove .exe extension if present for Process.GetProcessesByName
+        var searchName = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? processName[..^4]
+            : processName;
+
+        var processes = System.Diagnostics.Process.GetProcessesByName(searchName);
+        if (processes.Length > 0)
+        {
+            return processes[0].Id;
+        }
+    }
+    catch (ArgumentException)
+    {
+        // Invalid process name
+    }
+    catch (InvalidOperationException)
+    {
+        // Process query failed
+    }
+
+    return null;
 }

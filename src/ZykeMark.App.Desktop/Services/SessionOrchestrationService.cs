@@ -274,7 +274,10 @@ public sealed class SessionOrchestrationService : IDisposable
                     chunkSamples.ToArray());
 
                 _localStore.AppendChunk(_sessionId, chunk);
-                _logger.Log($"Real capture chunk {chunkIndex} written: {chunkSamples.Count} samples");
+                
+                // Log chunk write with telemetry attachment count for diagnostics
+                var telemetryAttachedCount = chunkSamples.Count(s => s.Telemetry != null);
+                _logger.Log($"ChunkWrite: samples={chunkSamples.Count}, telemetryAttached={telemetryAttachedCount}");
                 chunkIndex++;
             }
             catch (OperationCanceledException)
