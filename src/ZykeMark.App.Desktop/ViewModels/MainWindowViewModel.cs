@@ -504,19 +504,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             _samples.Clear();
             _pausedSamples.Clear();
 
-            // Dispose previous service and create new one with current settings
-            _service.ChunkReceived -= OnChunkReceived;
-            _service.Error -= OnServiceError;
-            _service.Dispose();
-
-            // Create service with current capture mode settings
-            _service = new SessionOrchestrationService(
-                useSimulatedMode: !_useRealCapture,
-                processName: ProcessName,
-                processId: _selectedProcessId,
-                presentMonPath: string.IsNullOrWhiteSpace(_presentMonPath) ? null : _presentMonPath);
-            _service.ChunkReceived += OnChunkReceived;
-            _service.Error += OnServiceError;
+            // Recreate service with current capture mode settings
+            RecreateServiceWithCurrentSettings();
 
             // Build CaptureTarget from the current process selection
             var captureTarget = BuildCaptureTarget();
@@ -536,6 +525,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             HandleError("Failed to start session.", ex);
             State = SessionState.Error;
         }
+    }
+
+    /// <summary>
+    /// Disposes the current service and creates a new one with current settings.
+    /// </summary>
+    private void RecreateServiceWithCurrentSettings()
+    {
+        // Unsubscribe from previous service events
+        _service.ChunkReceived -= OnChunkReceived;
+        _service.Error -= OnServiceError;
+        _service.Dispose();
+
+        // Create service with current capture mode settings
+        _service = new SessionOrchestrationService(
+            useSimulatedMode: !_useRealCapture,
+            processName: ProcessName,
+            processId: _selectedProcessId,
+            presentMonPath: string.IsNullOrWhiteSpace(_presentMonPath) ? null : _presentMonPath);
+        _service.ChunkReceived += OnChunkReceived;
+        _service.Error += OnServiceError;
     }
 
     /// <summary>
