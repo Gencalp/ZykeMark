@@ -381,4 +381,42 @@ public class PresentMonCsvParserTests
             CultureInfo.CurrentUICulture = originalUICulture;
         }
     }
+
+    /// <summary>
+    /// Tests that the parser correctly recognizes GPUBusy column from PresentMon v2 format.
+    /// PresentMon v2 with --v2_metrics outputs GPUBusy instead of GPUTime.
+    /// </summary>
+    [Fact]
+    public void Parser_ParsesGpuBusy_FromV2MetricsFormat()
+    {
+        var parser = new PresentMonCsvParser();
+        
+        // PresentMon v2 format with GPUBusy instead of GPUTime
+        parser.ParseHeader("Application,ProcessID,CPUStartTime,FrameTime,CPUBusy,GPUBusy");
+        Assert.True(parser.TryParse("Game.exe,1234,1000.0,16.67,5.2,6.8", out var sample));
+        
+        Assert.NotNull(sample.CpuFrameTimeMs);
+        Assert.NotNull(sample.GpuFrameTimeMs);
+        Assert.Equal(5.2, sample.CpuFrameTimeMs!.Value, precision: 1);
+        Assert.Equal(6.8, sample.GpuFrameTimeMs!.Value, precision: 1);
+    }
+
+    /// <summary>
+    /// Tests that the parser correctly recognizes msGPUActive column from PresentMon v2 format.
+    /// Some PresentMon versions use msGPUActive for GPU busy time.
+    /// </summary>
+    [Fact]
+    public void Parser_ParsesMsGpuActive_FromV2MetricsFormat()
+    {
+        var parser = new PresentMonCsvParser();
+        
+        // Alternative v2 format with msGPUActive
+        parser.ParseHeader("Application,ProcessID,CPUStartTime,FrameTime,msCPUActive,msGPUActive");
+        Assert.True(parser.TryParse("Game.exe,1234,1000.0,16.67,4.5,7.2", out var sample));
+        
+        Assert.NotNull(sample.CpuFrameTimeMs);
+        Assert.NotNull(sample.GpuFrameTimeMs);
+        Assert.Equal(4.5, sample.CpuFrameTimeMs!.Value, precision: 1);
+        Assert.Equal(7.2, sample.GpuFrameTimeMs!.Value, precision: 1);
+    }
 }
