@@ -6,42 +6,42 @@ namespace ZykeMark.Core.Tests;
 public class CaptureTargetTests
 {
     [Theory]
-    [InlineData("msedge", true)]
-    [InlineData("msedge.exe", true)]
-    [InlineData("chrome", true)]
-    [InlineData("chrome.exe", true)]
-    [InlineData("firefox", true)]
-    [InlineData("firefox.exe", true)]
-    [InlineData("brave", true)]
-    [InlineData("code", true)]
-    [InlineData("discord", true)]
-    [InlineData("teams", true)]
-    [InlineData("slack", true)]
-    [InlineData("spotify", true)]
-    public void IsMultiProcessApplication_ReturnsTrue_ForKnownBrowsersAndElectronApps(string processName, bool expected)
+    [InlineData("msedge")]
+    [InlineData("msedge.exe")]
+    [InlineData("chrome")]
+    [InlineData("chrome.exe")]
+    [InlineData("firefox")]
+    [InlineData("firefox.exe")]
+    [InlineData("brave")]
+    [InlineData("code")]
+    [InlineData("discord")]
+    [InlineData("teams")]
+    [InlineData("slack")]
+    [InlineData("spotify")]
+    public void IsMultiProcessApplication_ReturnsTrue_ForKnownBrowsersAndElectronApps(string processName)
     {
         var target = new CaptureTarget(
             ProcessName: processName,
             ProcessId: 1234,
             SelectionMode: CaptureTarget.ModePid);
 
-        Assert.Equal(expected, target.IsMultiProcessApplication);
+        Assert.True(target.IsMultiProcessApplication);
     }
 
     [Theory]
-    [InlineData("notepad.exe", false)]
-    [InlineData("game.exe", false)]
-    [InlineData("myapp", false)]
-    [InlineData("vlc", false)]
-    [InlineData("steam", false)]
-    public void IsMultiProcessApplication_ReturnsFalse_ForOtherApplications(string processName, bool expected)
+    [InlineData("notepad.exe")]
+    [InlineData("game.exe")]
+    [InlineData("myapp")]
+    [InlineData("vlc")]
+    [InlineData("steam")]
+    public void IsMultiProcessApplication_ReturnsFalse_ForOtherApplications(string processName)
     {
         var target = new CaptureTarget(
             ProcessName: processName,
             ProcessId: 1234,
             SelectionMode: CaptureTarget.ModePid);
 
-        Assert.Equal(expected, target.IsMultiProcessApplication);
+        Assert.False(target.IsMultiProcessApplication);
     }
 
     [Fact]
@@ -67,18 +67,18 @@ public class CaptureTargetTests
     }
 
     [Theory]
-    [InlineData("MsEdge", true)]
-    [InlineData("MSEDGE", true)]
-    [InlineData("CHROME.EXE", true)]
-    [InlineData("Firefox.Exe", true)]
-    public void IsMultiProcessApplication_IsCaseInsensitive(string processName, bool expected)
+    [InlineData("MsEdge")]
+    [InlineData("MSEDGE")]
+    [InlineData("CHROME.EXE")]
+    [InlineData("Firefox.Exe")]
+    public void IsMultiProcessApplication_IsCaseInsensitive(string processName)
     {
         var target = new CaptureTarget(
             ProcessName: processName,
             ProcessId: 1234,
             SelectionMode: CaptureTarget.ModePid);
 
-        Assert.Equal(expected, target.IsMultiProcessApplication);
+        Assert.True(target.IsMultiProcessApplication);
     }
 
     [Fact]
