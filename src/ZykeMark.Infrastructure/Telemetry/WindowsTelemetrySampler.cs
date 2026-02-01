@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text.Json;
 using ZykeMark.Core.Interfaces;
 using ZykeMark.Core.Models;
 
@@ -47,13 +48,23 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
     private DateTime _lastDiskSampleTime;
     private ulong _lastDiskReadBytes;
     
-    // GPU Performance Counters
+    // GPU Performance Counters - cached for efficiency and proper priming
     private PerformanceCounterCategory? _gpuEngineCategory;
     private PerformanceCounterCategory? _gpuProcessMemoryCategory;
+    
+    // Cached GPU counters - created once on Start() and primed
+    private readonly List<PerformanceCounter> _gpuUtilizationCounters = new();
+    private readonly List<PerformanceCounter> _vramDedicatedCounters = new();
+    private readonly List<PerformanceCounter> _vramSharedCounters = new();
+    
+    // Diagnostics for telemetry debugging
+    private TelemetryDiagnostics _diagnostics = new();
+    private string? _sessionFolder;
 
-    public WindowsTelemetrySampler(Action<string>? logger = null)
+    public WindowsTelemetrySampler(Action<string>? logger = null, string? sessionFolder = null)
     {
         _logger = logger;
+        _sessionFolder = sessionFolder;
     }
 
     public bool IsRunning => _isRunning;
@@ -132,6 +143,12 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
         {
             Log($"[Telemetry] Sampler stopped. Collected {_samples.Count} samples.");
         }
+        
+        // Dispose cached GPU counters
+        DisposeGpuCounters();
+        
+        // Write telemetry diagnostics
+        WriteTelemetryDiagnostics();
     }
 
     public TelemetrySample? TryGetLatest()
@@ -209,8 +226,30 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
     public void Dispose()
     {
         Stop();
+        DisposeGpuCounters();
         _process?.Dispose();
         _process = null;
+    }
+    
+    private void DisposeGpuCounters()
+    {
+        foreach (var counter in _gpuUtilizationCounters)
+        {
+            try { counter.Dispose(); } catch { /* Ignore disposal errors */ }
+        }
+        _gpuUtilizationCounters.Clear();
+        
+        foreach (var counter in _vramDedicatedCounters)
+        {
+            try { counter.Dispose(); } catch { /* Ignore disposal errors */ }
+        }
+        _vramDedicatedCounters.Clear();
+        
+        foreach (var counter in _vramSharedCounters)
+        {
+            try { counter.Dispose(); } catch { /* Ignore disposal errors */ }
+        }
+        _vramSharedCounters.Clear();
     }
 
     private void OnTimerTick(object? state)
@@ -554,75 +593,186 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
     private void InitializeGpuCounters()
     {
+        _diagnostics.GpuEngineAvailable = false;
+        _diagnostics.GpuProcessMemoryAvailable = false;
+        
         try
         {
             // Check if GPU Engine category exists
-            if (PerformanceCounterCategory.Exists("GPU Engine"))
+            if (!PerformanceCounterCategory.Exists("GPU Engine"))
             {
-                _gpuEngineCategory = new PerformanceCounterCategory("GPU Engine");
-                Log("[Telemetry] GPU Engine performance counters available");
+                _diagnostics.GpuEngineError = "GPU Engine category not found";
+                Log("[Telemetry] GPU Engine performance counters not available - category missing");
             }
             else
             {
-                Log("[Telemetry] GPU Engine performance counters not available");
+                _gpuEngineCategory = new PerformanceCounterCategory("GPU Engine");
+                _diagnostics.GpuEngineAvailable = true;
+                Log("[Telemetry] GPU Engine performance counters available");
             }
 
             // Check if GPU Process Memory category exists
-            if (PerformanceCounterCategory.Exists("GPU Process Memory"))
+            if (!PerformanceCounterCategory.Exists("GPU Process Memory"))
             {
-                _gpuProcessMemoryCategory = new PerformanceCounterCategory("GPU Process Memory");
-                Log("[Telemetry] GPU Process Memory performance counters available");
+                _diagnostics.GpuProcessMemoryError = "GPU Process Memory category not found";
+                Log("[Telemetry] GPU Process Memory performance counters not available - category missing");
             }
             else
             {
-                Log("[Telemetry] GPU Process Memory performance counters not available");
+                _gpuProcessMemoryCategory = new PerformanceCounterCategory("GPU Process Memory");
+                _diagnostics.GpuProcessMemoryAvailable = true;
+                Log("[Telemetry] GPU Process Memory performance counters available");
             }
 
-            _isGpuTelemetryAvailable = _gpuEngineCategory != null && _gpuProcessMemoryCategory != null;
+            // Now cache and prime the counters for this specific PID
+            CacheAndPrimeGpuCounters();
+            
+            _isGpuTelemetryAvailable = _gpuUtilizationCounters.Count > 0 || 
+                                       _vramDedicatedCounters.Count > 0 || 
+                                       _vramSharedCounters.Count > 0;
         }
         catch (Exception ex)
         {
             Log($"[Telemetry] Warning: Could not initialize GPU counters: {ex.Message}");
+            _diagnostics.GpuEngineError = ex.Message;
             _isGpuTelemetryAvailable = false;
         }
+    }
+    
+    private void CacheAndPrimeGpuCounters()
+    {
+        var pidPattern = $"pid_{_processId}_";
+        var matchedEngineInstances = new List<string>();
+        var matchedMemoryInstances = new List<string>();
+        
+        // Cache GPU Engine counters (Utilization Percentage)
+        if (_gpuEngineCategory != null)
+        {
+            try
+            {
+                var instanceNames = _gpuEngineCategory.GetInstanceNames();
+                Log($"[Telemetry] GPU Engine has {instanceNames.Length} total instances");
+                
+                foreach (var instanceName in instanceNames)
+                {
+                    if (!instanceName.Contains(pidPattern, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                    
+                    // Prefer 3D engine instances, but collect all for this PID
+                    var is3DEngine = instanceName.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase) ||
+                                     instanceName.Contains("engtype_Graphics", StringComparison.OrdinalIgnoreCase);
+                    
+                    try
+                    {
+                        var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", instanceName, readOnly: true);
+                        // PRIME the counter - first call returns 0 for rate counters
+                        counter.NextValue();
+                        _gpuUtilizationCounters.Add(counter);
+                        matchedEngineInstances.Add(instanceName);
+                        
+                        if (is3DEngine)
+                        {
+                            Log($"[Telemetry] Cached 3D GPU Engine counter: {instanceName}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[Telemetry] Failed to create GPU Engine counter for {instanceName}: {ex.Message}");
+                    }
+                }
+                
+                Log($"[Telemetry] Cached {_gpuUtilizationCounters.Count} GPU utilization counters for PID {_processId}");
+            }
+            catch (Exception ex)
+            {
+                Log($"[Telemetry] Error enumerating GPU Engine instances: {ex.Message}");
+                _diagnostics.GpuEngineError = ex.Message;
+            }
+        }
+        
+        // Cache GPU Process Memory counters (Dedicated and Shared Usage)
+        if (_gpuProcessMemoryCategory != null)
+        {
+            try
+            {
+                var instanceNames = _gpuProcessMemoryCategory.GetInstanceNames();
+                Log($"[Telemetry] GPU Process Memory has {instanceNames.Length} total instances");
+                
+                foreach (var instanceName in instanceNames)
+                {
+                    if (!instanceName.Contains(pidPattern, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                    
+                    try
+                    {
+                        // Create Dedicated Usage counter
+                        var dedicatedCounter = new PerformanceCounter("GPU Process Memory", "Dedicated Usage", instanceName, readOnly: true);
+                        dedicatedCounter.NextValue(); // Prime
+                        _vramDedicatedCounters.Add(dedicatedCounter);
+                        
+                        // Create Shared Usage counter
+                        var sharedCounter = new PerformanceCounter("GPU Process Memory", "Shared Usage", instanceName, readOnly: true);
+                        sharedCounter.NextValue(); // Prime
+                        _vramSharedCounters.Add(sharedCounter);
+                        
+                        matchedMemoryInstances.Add(instanceName);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[Telemetry] Failed to create VRAM counter for {instanceName}: {ex.Message}");
+                    }
+                }
+                
+                Log($"[Telemetry] Cached {_vramDedicatedCounters.Count} VRAM counters for PID {_processId}");
+            }
+            catch (Exception ex)
+            {
+                Log($"[Telemetry] Error enumerating GPU Process Memory instances: {ex.Message}");
+                _diagnostics.GpuProcessMemoryError = ex.Message;
+            }
+        }
+        
+        // Store diagnostics
+        _diagnostics.GpuEngineMatchedCount = _gpuUtilizationCounters.Count;
+        _diagnostics.GpuProcessMemoryMatchedCount = _vramDedicatedCounters.Count;
+        _diagnostics.GpuEngineMatchedExamples = matchedEngineInstances.Take(5).ToList();
+        _diagnostics.GpuProcessMemoryMatchedExamples = matchedMemoryInstances.Take(5).ToList();
     }
 
     private double? CollectGpuUtilizationPercent()
     {
-        if (_gpuEngineCategory == null)
+        if (_gpuUtilizationCounters.Count == 0)
         {
             return null;
         }
 
         try
         {
-            var instanceNames = _gpuEngineCategory.GetInstanceNames();
-            var pidPattern = $"pid_{_processId}_";
-            
             double totalUtilization = 0;
-            var matchingInstances = 0;
+            var validReadings = 0;
 
-            foreach (var instanceName in instanceNames)
+            foreach (var counter in _gpuUtilizationCounters)
             {
-                if (!instanceName.Contains(pidPattern, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
                 try
                 {
-                    using var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", instanceName, readOnly: true);
                     var value = counter.NextValue();
-                    totalUtilization += value;
-                    matchingInstances++;
+                    if (value >= 0)
+                    {
+                        totalUtilization += value;
+                        validReadings++;
+                    }
                 }
                 catch
                 {
-                    // Counter may not exist for this instance
+                    // Counter may have become invalid (process closed GPU context)
                 }
             }
 
-            if (matchingInstances == 0)
+            if (validReadings == 0)
             {
                 return null;
             }
@@ -638,45 +788,39 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
     private double? CollectVramDedicatedMB()
     {
-        if (_gpuProcessMemoryCategory == null)
+        if (_vramDedicatedCounters.Count == 0)
         {
             return null;
         }
 
         try
         {
-            var instanceNames = _gpuProcessMemoryCategory.GetInstanceNames();
-            var pidPattern = $"pid_{_processId}_";
-            
-            double totalDedicated = 0;
-            var matchingInstances = 0;
+            double maxDedicated = 0;
+            var validReadings = 0;
 
-            foreach (var instanceName in instanceNames)
+            foreach (var counter in _vramDedicatedCounters)
             {
-                if (!instanceName.Contains(pidPattern, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
                 try
                 {
-                    using var counter = new PerformanceCounter("GPU Process Memory", "Dedicated Usage", instanceName, readOnly: true);
                     var value = counter.NextValue();
-                    totalDedicated += value;
-                    matchingInstances++;
+                    if (value >= 0)
+                    {
+                        maxDedicated = Math.Max(maxDedicated, value);
+                        validReadings++;
+                    }
                 }
                 catch
                 {
-                    // Counter may not exist for this instance
+                    // Counter may have become invalid
                 }
             }
 
-            if (matchingInstances == 0)
+            if (validReadings == 0)
             {
                 return null;
             }
 
-            return totalDedicated * BytesToMB;
+            return maxDedicated * BytesToMB;
         }
         catch (Exception ex)
         {
@@ -687,45 +831,39 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
     private double? CollectVramSharedMB()
     {
-        if (_gpuProcessMemoryCategory == null)
+        if (_vramSharedCounters.Count == 0)
         {
             return null;
         }
 
         try
         {
-            var instanceNames = _gpuProcessMemoryCategory.GetInstanceNames();
-            var pidPattern = $"pid_{_processId}_";
-            
-            double totalShared = 0;
-            var matchingInstances = 0;
+            double maxShared = 0;
+            var validReadings = 0;
 
-            foreach (var instanceName in instanceNames)
+            foreach (var counter in _vramSharedCounters)
             {
-                if (!instanceName.Contains(pidPattern, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
                 try
                 {
-                    using var counter = new PerformanceCounter("GPU Process Memory", "Shared Usage", instanceName, readOnly: true);
                     var value = counter.NextValue();
-                    totalShared += value;
-                    matchingInstances++;
+                    if (value >= 0)
+                    {
+                        maxShared = Math.Max(maxShared, value);
+                        validReadings++;
+                    }
                 }
                 catch
                 {
-                    // Counter may not exist for this instance
+                    // Counter may have become invalid
                 }
             }
 
-            if (matchingInstances == 0)
+            if (validReadings == 0)
             {
                 return null;
             }
 
-            return totalShared * BytesToMB;
+            return maxShared * BytesToMB;
         }
         catch (Exception ex)
         {
@@ -735,9 +873,83 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
     }
 
     #endregion
+    
+    #region Telemetry Diagnostics
+    
+    private void WriteTelemetryDiagnostics()
+    {
+        if (string.IsNullOrWhiteSpace(_sessionFolder))
+        {
+            return;
+        }
+        
+        try
+        {
+            _diagnostics.ProcessId = _processId;
+            _diagnostics.SampleCount = _samples.Count;
+            _diagnostics.IsGpuTelemetryAvailable = _isGpuTelemetryAvailable;
+            
+            var path = Path.Combine(_sessionFolder, "telemetry_diagnostics.json");
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var json = JsonSerializer.Serialize(_diagnostics, options);
+            File.WriteAllText(path, json);
+            
+            Log($"[Telemetry] Diagnostics written to: {path}");
+        }
+        catch (Exception ex)
+        {
+            Log($"[Telemetry] Failed to write diagnostics: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// Sets the session folder for diagnostics output.
+    /// </summary>
+    public void SetSessionFolder(string? folder)
+    {
+        _sessionFolder = folder;
+    }
+    
+    /// <summary>
+    /// Gets the current telemetry diagnostics.
+    /// </summary>
+    public TelemetryDiagnostics GetDiagnostics()
+    {
+        _diagnostics.ProcessId = _processId;
+        _diagnostics.SampleCount = _samples.Count;
+        _diagnostics.IsGpuTelemetryAvailable = _isGpuTelemetryAvailable;
+        return _diagnostics;
+    }
+    
+    #endregion
 
     private void Log(string message)
     {
         _logger?.Invoke(message);
     }
+}
+
+/// <summary>
+/// Diagnostics data for telemetry debugging.
+/// </summary>
+public sealed class TelemetryDiagnostics
+{
+    public int ProcessId { get; set; }
+    public int SampleCount { get; set; }
+    public bool IsGpuTelemetryAvailable { get; set; }
+    
+    // GPU Engine counters
+    public bool GpuEngineAvailable { get; set; }
+    public string? GpuEngineError { get; set; }
+    public int GpuEngineMatchedCount { get; set; }
+    public List<string>? GpuEngineMatchedExamples { get; set; }
+    
+    // GPU Process Memory counters
+    public bool GpuProcessMemoryAvailable { get; set; }
+    public string? GpuProcessMemoryError { get; set; }
+    public int GpuProcessMemoryMatchedCount { get; set; }
+    public List<string>? GpuProcessMemoryMatchedExamples { get; set; }
+    
+    // General status
+    public string? LastExceptionMessage { get; set; }
 }
