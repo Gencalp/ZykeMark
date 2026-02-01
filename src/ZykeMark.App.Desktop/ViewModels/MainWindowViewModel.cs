@@ -713,7 +713,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         try
         {
             var summary = _discoveryService.LoadSessionSummary(SessionFolder);
-            if (summary?.DataQuality is not null)
+            if (summary is null)
+            {
+                return;
+            }
+
+            // Check if session failed (0 samples collected)
+            if (summary.Status == "Failed")
+            {
+                State = SessionState.Error;
+                LastError = summary.ErrorMessage ?? "Session failed: No frame samples were captured.";
+                StatusMessage = "Session failed: No data captured. Check target process and permissions.";
+                return;
+            }
+
+            if (summary.DataQuality is not null)
             {
                 DataQualityEtwRisk = summary.DataQuality.EtwEventsLostRiskLevel ?? "None";
                 DataQualityWarnings = summary.DataQuality.CaptureWarnings?.Count > 0

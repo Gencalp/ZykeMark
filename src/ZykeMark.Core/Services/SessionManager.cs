@@ -61,8 +61,18 @@ public sealed class SessionManager : ISessionManager
 
         var chunks = _localStore.ReadChunks(resolvedSessionId);
         var samples = chunks.SelectMany(chunk => chunk.Samples).ToArray();
-        var aggregates = samples.Length == 0
-            ? new SessionAggregates(
+        
+        // Determine session status based on samples collected
+        // If 0 frame samples were collected, mark the session as Failed
+        string sessionStatus;
+        string? errorMessage = null;
+        
+        SessionAggregates aggregates;
+        if (samples.Length == 0)
+        {
+            sessionStatus = "Failed";
+            errorMessage = "No frame samples were captured. Check that the target process is running and PresentMon has access permissions.";
+            aggregates = new SessionAggregates(
                 FrameCount: 0,
                 DurationMs: 0,
                 AvgFps: 0,
@@ -71,8 +81,13 @@ public sealed class SessionManager : ISessionManager
                 OnePercentLowFps: 0,
                 PointOnePercentLowFps: 0,
                 AvgCpuFrameTimeMs: null,
-                AvgGpuFrameTimeMs: null)
-            : _aggregator.Aggregate(samples);
+                AvgGpuFrameTimeMs: null);
+        }
+        else
+        {
+            sessionStatus = "Completed";
+            aggregates = _aggregator.Aggregate(samples);
+        }
 
         // Use provided data quality or create empty/unknown if not provided
         var effectiveDataQuality = dataQuality ?? DataQuality.Empty;
@@ -81,6 +96,8 @@ public sealed class SessionManager : ISessionManager
         {
             metadata = updatedMetadata,
             aggregates,
+            status = sessionStatus,
+            errorMessage = errorMessage,
             dataQuality = new
             {
                 EtwEventsLostCount = effectiveDataQuality.EtwEventsLostCount,
