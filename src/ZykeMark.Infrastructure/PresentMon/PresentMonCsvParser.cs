@@ -80,8 +80,8 @@ public sealed class PresentMonCsvParser
             return false;
         }
 
-        var cpuFrameTimeMs = TryReadNullableDouble(fields, new[] { "MsCPUBusy", "CPUBusy" });
-        var gpuFrameTimeMs = TryReadNullableDouble(fields, new[] { "MsGPUTime", "GPUTime" });
+        var cpuFrameTimeMs = TryReadNullableDouble(fields, new[] { "MsCPUBusy", "CPUBusy", "msCPUActive", "CPUActive" });
+        var gpuFrameTimeMs = TryReadNullableDouble(fields, new[] { "MsGPUTime", "GPUTime", "GPUBusy", "msGPUActive", "GPUActive" });
 
         sample = new FrameSample(timestampMs, frameTimeMs, cpuFrameTimeMs, gpuFrameTimeMs);
         return true;
