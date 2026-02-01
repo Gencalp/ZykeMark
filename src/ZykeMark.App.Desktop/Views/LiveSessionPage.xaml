@@ -14,6 +14,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- Page Header -->
@@ -241,8 +242,195 @@
                 </UniformGrid>
             </StackPanel>
 
-            <!-- Stutter Markers -->
+            <!-- System Telemetry -->
             <StackPanel Grid.Row="2" Margin="0,0,0,24">
+                <TextBlock Text="System Telemetry" FontSize="16" FontWeight="SemiBold" 
+                           Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
+                <UniformGrid Columns="3" Rows="3">
+                    <!-- GPU Utilization -->
+                    <ui:Card Margin="0,0,8,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#9C27B0" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Video24" FontSize="20" 
+                                           Foreground="#9C27B0"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="GPU Utilization" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding GpuUtilization}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- VRAM Total -->
+                    <ui:Card Margin="4,0,4,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#673AB7" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Memory16" FontSize="20" 
+                                           Foreground="#673AB7"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="VRAM (Ded+Shared)" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding VramTotal}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- CPU Process % -->
+                    <ui:Card Margin="8,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#2196F3" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Desktop24" FontSize="20" 
+                                           Foreground="#2196F3"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="CPU Process %" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding CpuProcessPercent}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- Top Thread CPU % -->
+                    <ui:Card Margin="0,0,8,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#03A9F4" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Board24" FontSize="20" 
+                                           Foreground="#03A9F4"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Top Thread CPU %" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding TopThreadCpuPercent}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- RAM Working Set -->
+                    <ui:Card Margin="4,0,4,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#4CAF50" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="DataArea24" FontSize="20" 
+                                           Foreground="#4CAF50"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="RAM Working Set" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding RamWorkingSet}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- RAM Private Bytes -->
+                    <ui:Card Margin="8,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#8BC34A" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Database24" FontSize="20" 
+                                           Foreground="#8BC34A"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="RAM Private Bytes" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding RamPrivateBytes}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- VRAM Dedicated -->
+                    <ui:Card Margin="0,0,8,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#9575CD" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Memory16" FontSize="20" 
+                                           Foreground="#9575CD"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="VRAM Dedicated" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding VramDedicated}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- VRAM Shared -->
+                    <ui:Card Margin="4,0,4,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#7E57C2" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="Memory16" FontSize="20" 
+                                           Foreground="#7E57C2"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="VRAM Shared" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding VramShared}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+
+                    <!-- Disk Read MB/s -->
+                    <ui:Card Margin="8,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8" 
+                                    Background="#FF9800" Margin="0,0,12,0" Opacity="0.2"/>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="HardDrive20" FontSize="20" 
+                                           Foreground="#FF9800"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Disk IO Read" FontSize="11" 
+                                           Foreground="{StaticResource ZykeTextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding DiskReadMBps}" FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource ZykeTextPrimaryBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </ui:Card>
+                </UniformGrid>
+            </StackPanel>
+
+            <!-- Stutter Markers -->
+            <StackPanel Grid.Row="3" Margin="0,0,0,24">
                 <TextBlock Text="Stutter Detection" FontSize="16" FontWeight="SemiBold" 
                            Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
                 <ui:Card>
@@ -286,7 +474,7 @@
             </StackPanel>
 
             <!-- Charts Section -->
-            <StackPanel Grid.Row="3" Margin="0,0,0,24">
+            <StackPanel Grid.Row="4" Margin="0,0,0,24">
                 <TextBlock Text="Performance Charts" FontSize="16" FontWeight="SemiBold" 
                            Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
                 <Grid>
@@ -322,7 +510,7 @@
             </StackPanel>
 
             <!-- Data Quality Panel -->
-            <StackPanel Grid.Row="4" Margin="0,0,0,24">
+            <StackPanel Grid.Row="5" Margin="0,0,0,24">
                 <TextBlock Text="Data Quality" FontSize="16" FontWeight="SemiBold" 
                            Foreground="{StaticResource ZykeTextPrimaryBrush}" Margin="0,0,0,12"/>
                 <ui:Card>
@@ -367,7 +555,7 @@
             </StackPanel>
 
             <!-- Verdict and Next Steps -->
-            <Grid Grid.Row="5">
+            <Grid Grid.Row="6">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
