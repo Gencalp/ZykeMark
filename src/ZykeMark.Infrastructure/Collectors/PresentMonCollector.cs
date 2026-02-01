@@ -199,8 +199,9 @@ public sealed class PresentMonCollector : ICollector
 
             var relativeTimestampMs = sample.TimestampMs - firstDataTimestampMs.GetValueOrDefault();
             
-            // Attach latest telemetry sample if available
-            var telemetry = _telemetrySampler?.TryGetLatest();
+            // Attach telemetry sample closest to this frame's timestamp
+            // GetSampleAt finds the telemetry sample with the closest timestamp
+            var telemetry = _telemetrySampler?.GetSampleAt(relativeTimestampMs);
             var normalizedSample = sample with { TimestampMs = relativeTimestampMs, Telemetry = telemetry };
 
             samples.Add(normalizedSample);
@@ -321,8 +322,9 @@ public sealed class PresentMonCollector : ICollector
 
                 var relativeTimestampMs = sample.TimestampMs - firstDataTimestampMs.GetValueOrDefault();
                 
-                // Attach latest telemetry sample if available
-                var telemetry = _telemetrySampler?.TryGetLatest();
+                // Attach telemetry sample closest to this frame's timestamp
+                // In streaming mode, TryGetLatest would work too, but GetSampleAt is more precise
+                var telemetry = _telemetrySampler?.GetSampleAt(relativeTimestampMs);
                 var normalizedSample = sample with { TimestampMs = relativeTimestampMs, Telemetry = telemetry };
 
                 samples.Add(normalizedSample);

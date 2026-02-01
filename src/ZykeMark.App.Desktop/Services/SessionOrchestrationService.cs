@@ -260,8 +260,8 @@ public sealed class SessionOrchestrationService : IDisposable
                     firstTimestampMs ??= sample.TimestampMs;
                     var relativeTimestampMs = sample.TimestampMs - firstTimestampMs.Value;
                     
-                    // Attach latest telemetry sample to frame samples
-                    var telemetry = _telemetrySampler?.TryGetLatest();
+                    // Attach telemetry sample closest to this frame's timestamp
+                    var telemetry = _telemetrySampler?.GetSampleAt(relativeTimestampMs);
                     var enrichedSample = sample with 
                     { 
                         TimestampMs = relativeTimestampMs,

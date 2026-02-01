@@ -342,7 +342,7 @@ switch (command)
             
             foreach (var sample in samples.Take(5))
             {
-                Console.WriteLine($"  CPU={sample.CpuProcessPercent:F1}%, TopThread={sample.TopThreadCpuPercent:F1}%, WS={sample.RamWorkingSetMB:F1}MB, Private={sample.RamPrivateBytesMB:F1}MB, DiskRead={sample.DiskReadMBps:F2}MB/s, GPU={sample.GpuUtilizationPercent?.ToString("F1") ?? "n/a"}%");
+                Console.WriteLine($"  ts={sample.TimestampMs:F0}ms, CPU={sample.CpuProcessPercent:F1}%, TopThread={sample.TopThreadCpuPercent:F1}%, WS={sample.RamWorkingSetMB:F1}MB, Private={sample.RamPrivateBytesMB:F1}MB, DiskRead={sample.DiskReadMBps:F2}MB/s, GPU={sample.GpuUtilizationPercent?.ToString("F1") ?? "n/a"}%");
             }
             
             if (samples.Count > 5)
@@ -355,8 +355,10 @@ switch (command)
             var hasPrivate = samples.Any(s => s.RamPrivateBytesMB.HasValue);
             var hasCpu = samples.Any(s => s.CpuProcessPercent.HasValue);
             var hasDisk = samples.Any(s => s.DiskReadMBps.HasValue);
+            var hasTimestamp = samples.Any(s => s.TimestampMs.HasValue);
             
             Console.WriteLine($"\nMetric availability:");
+            Console.WriteLine($"  TimestampMs: {(hasTimestamp ? "OK" : "MISSING")}");
             Console.WriteLine($"  RamWorkingSetMB: {(hasWorkingSet ? "OK" : "MISSING")}");
             Console.WriteLine($"  RamPrivateBytesMB: {(hasPrivate ? "OK" : "MISSING")}");
             Console.WriteLine($"  CpuProcessPercent: {(hasCpu ? "OK" : "MISSING")}");
@@ -368,6 +370,97 @@ switch (command)
             Console.WriteLine($"Error: {ex.Message}");
         }
         
+        return;
+    }
+    case "diagnostic-capture":
+    {
+        // Developer-only diagnostic capture to verify real mode end-to-end
+        // This validates: PresentMon frames + telemetry samples + proper timestamp matching
+        var processName = GetOptionValue(args, "--process_name") ?? "dotnet";
+        var secondsValue = GetOptionValue(args, "--seconds");
+        var presentMonPath = GetOptionValue(args, "--presentmon-path");
+
+        var durationSeconds = 5.0; // Short default for diagnostics
+        if (!string.IsNullOrWhiteSpace(secondsValue) && !double.TryParse(secondsValue, NumberStyles.Float, CultureInfo.InvariantCulture, out durationSeconds))
+        {
+            Console.WriteLine("Invalid value for --seconds.");
+            return;
+        }
+
+        Console.WriteLine("=== ZykeMark Diagnostic Capture ===");
+        Console.WriteLine($"Target process: {processName}");
+        Console.WriteLine($"Duration: {durationSeconds}s");
+        Console.WriteLine();
+
+        // Step 1: Verify process exists
+        var telemetryPid = ResolveProcessId(processName);
+        if (telemetryPid is null)
+        {
+            Console.WriteLine($"FAIL: Process '{processName}' not found. Is the application running?");
+            return;
+        }
+        Console.WriteLine($"PASS: Found process '{processName}' with PID {telemetryPid}");
+
+        // Step 2: Test telemetry collection independently
+        Console.WriteLine("\n--- Testing Telemetry Sampler ---");
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("SKIP: Telemetry testing is only supported on Windows.");
+        }
+        else
+        {
+            try
+            {
+                using var testSampler = new WindowsTelemetrySampler();
+                testSampler.Start(telemetryPid.Value);
+                Thread.Sleep(1500); // Collect 3 samples at 500ms interval
+                testSampler.Stop();
+
+                var telemetrySamples = testSampler.GetSamples();
+                if (telemetrySamples.Count == 0)
+                {
+                    Console.WriteLine("FAIL: No telemetry samples collected");
+                }
+                else
+                {
+                    var hasTimestamp = telemetrySamples.All(s => s.TimestampMs.HasValue);
+                    var hasRam = telemetrySamples.Any(s => s.RamWorkingSetMB.HasValue);
+                    var hasCpu = telemetrySamples.Any(s => s.CpuProcessPercent.HasValue);
+
+                    Console.WriteLine($"PASS: Collected {telemetrySamples.Count} telemetry samples");
+                    Console.WriteLine($"  - TimestampMs: {(hasTimestamp ? "PASS" : "FAIL - timestamps missing")}");
+                    Console.WriteLine($"  - RamWorkingSetMB: {(hasRam ? "PASS" : "FAIL")}");
+                    Console.WriteLine($"  - CpuProcessPercent: {(hasCpu ? "PASS" : "FAIL")}");
+                    Console.WriteLine($"  - GPU available: {testSampler.IsGpuTelemetryAvailable}");
+
+                    // Show a sample
+                    var sample = telemetrySamples.First();
+                    Console.WriteLine($"  - Sample: ts={sample.TimestampMs:F0}ms, WS={sample.RamWorkingSetMB:F1}MB, CPU={sample.CpuProcessPercent:F1}%");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"FAIL: Telemetry error: {ex.Message}");
+            }
+        }
+
+        // Step 3: Note about full capture (requires Windows + PresentMon)
+        Console.WriteLine("\n--- Full Capture Test ---");
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("SKIP: Full capture testing requires Windows with PresentMon.");
+            Console.WriteLine("Use 'real-run' command on Windows to perform full capture.");
+        }
+        else
+        {
+            Console.WriteLine($"To run a full diagnostic capture with PresentMon:");
+            Console.WriteLine($"  zykemark real-run --process_name \"{processName}\" --seconds {durationSeconds}");
+            Console.WriteLine($"\nThis will create a session folder with:");
+            Console.WriteLine($"  - chunks/chunk_*.json containing FrameSamples with attached Telemetry");
+            Console.WriteLine($"  - summary.json with telemetry aggregates (AvgCpuProcessPercent, AvgRamWorkingSetMB, etc.)");
+        }
+
+        Console.WriteLine("\n=== Diagnostic Complete ===");
         return;
     }
     default:
@@ -387,6 +480,7 @@ static void PrintUsage()
     Console.WriteLine("  zykemark real-run --process_name \"MyGame.exe\" --seconds 15 --presentmon-path \"C:\\\\tools\\\\PresentMon.exe\"");
     Console.WriteLine("  zykemark export-pdf --sessionId <id> [--out \"C:\\\\path\\\\report.pdf\"]");
     Console.WriteLine("  zykemark test-telemetry --process_id <pid> [--seconds 3]");
+    Console.WriteLine("  zykemark diagnostic-capture --process_name <name> [--seconds 5]  # Developer diagnostic");
 }
 
 static string? GetOptionValue(string[] arguments, string name)

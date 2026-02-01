@@ -43,11 +43,25 @@ public interface ITelemetrySampler : IDisposable
     bool IsGpuTelemetryAvailable { get; }
 
     /// <summary>
+    /// Gets the timestamp when sampling started (milliseconds since some reference point).
+    /// Used for correlating telemetry samples with frame samples.
+    /// </summary>
+    double StartTimestampMs { get; }
+
+    /// <summary>
     /// Attempts to get the latest telemetry sample.
     /// Returns null if no sample is available or sampling is not running.
     /// </summary>
     /// <returns>The latest telemetry sample, or null if unavailable.</returns>
     TelemetrySample? TryGetLatest();
+
+    /// <summary>
+    /// Gets the telemetry sample closest to the specified timestamp.
+    /// Used to correlate frame samples with telemetry samples by time.
+    /// </summary>
+    /// <param name="timestampMs">Target timestamp in milliseconds (relative to StartTimestampMs or an absolute reference).</param>
+    /// <returns>The closest telemetry sample, or null if no samples are available.</returns>
+    TelemetrySample? GetSampleAt(double timestampMs);
 
     /// <summary>
     /// Gets all collected telemetry samples since Start() was called.

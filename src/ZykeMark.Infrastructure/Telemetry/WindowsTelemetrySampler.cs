@@ -36,6 +36,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
     private bool _isRunning;
     private bool _isGpuTelemetryAvailable;
     private TelemetrySample? _latestSample;
+    private DateTime _startTime;
     
     // CPU tracking
     private DateTime _lastCpuSampleTime;
@@ -57,6 +58,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
     public bool IsRunning => _isRunning;
     public bool IsGpuTelemetryAvailable => _isGpuTelemetryAvailable;
+    public double StartTimestampMs { get; private set; }
 
     public void Start(int processId)
     {
@@ -98,6 +100,10 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
         // Initialize GPU counters (may fail if not available)
         InitializeGpuCounters();
+
+        // Initialize timing
+        _startTime = DateTime.UtcNow;
+        StartTimestampMs = 0; // Relative timestamps start at 0
 
         lock (_lock)
         {
@@ -141,6 +147,62 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
         lock (_lock)
         {
             return _samples.ToArray();
+        }
+    }
+
+    public TelemetrySample? GetSampleAt(double timestampMs)
+    {
+        lock (_lock)
+        {
+            if (_samples.Count == 0)
+            {
+                return null;
+            }
+
+            // Binary search for the closest sample (samples are already sorted by timestamp)
+            // This provides O(log n) performance instead of O(n) linear search
+            var left = 0;
+            var right = _samples.Count - 1;
+
+            // Handle edge cases
+            if (!_samples[left].TimestampMs.HasValue)
+            {
+                return _latestSample;
+            }
+            if (timestampMs <= _samples[left].TimestampMs!.Value)
+            {
+                return _samples[left];
+            }
+            if (!_samples[right].TimestampMs.HasValue)
+            {
+                return _latestSample;
+            }
+            if (timestampMs >= _samples[right].TimestampMs!.Value)
+            {
+                return _samples[right];
+            }
+
+            // Binary search to find the two samples bracketing the target timestamp
+            while (right - left > 1)
+            {
+                var mid = (left + right) / 2;
+                var midTs = _samples[mid].TimestampMs ?? 0;
+
+                if (midTs <= timestampMs)
+                {
+                    left = mid;
+                }
+                else
+                {
+                    right = mid;
+                }
+            }
+
+            // Return the closer of the two bracketing samples
+            var leftDistance = Math.Abs((_samples[left].TimestampMs ?? 0) - timestampMs);
+            var rightDistance = Math.Abs((_samples[right].TimestampMs ?? 0) - timestampMs);
+
+            return leftDistance <= rightDistance ? _samples[left] : _samples[right];
         }
     }
 
@@ -205,6 +267,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
         // Capture timestamp once for consistent elapsed time calculations
         var sampleTime = DateTime.UtcNow;
+        var timestampMs = (sampleTime - _startTime).TotalMilliseconds;
 
         // Collect CPU metrics (pass the sample time to ensure consistency)
         var cpuProcessPercent = CollectProcessCpuPercent(sampleTime);
@@ -230,7 +293,8 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
             TopThreadCpuPercent: topThreadCpuPercent,
             RamWorkingSetMB: ramWorkingSetMB,
             RamPrivateBytesMB: ramPrivateBytesMB,
-            DiskReadMBps: diskReadMBps);
+            DiskReadMBps: diskReadMBps,
+            TimestampMs: timestampMs);
     }
 
     #region CPU Metrics
