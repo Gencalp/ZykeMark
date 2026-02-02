@@ -27,6 +27,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
     private const int SampleIntervalMs = 500; // Sample every 500ms
     private const double BytesToMB = 1.0 / (1024.0 * 1024.0);
     private const int PidSetRefreshIntervalMs = 5000; // Refresh PID set every 5 seconds for multi-process apps
+    private const int MaxDiagnosticSampleInstances = 20; // Max number of instance names to scan for diagnostics
     
     // Regex pattern to extract PID from performance counter instance names
     // Matches patterns like "pid_1234_", "pid_9068_luid_...", etc.
@@ -806,7 +807,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                 Log($"[Telemetry] GPU Engine has {instanceNames.Length} total instances");
                 
                 // First pass: extract all PIDs from instances to understand what's available
-                foreach (var instanceName in instanceNames.Take(20))
+                foreach (var instanceName in instanceNames.Take(MaxDiagnosticSampleInstances))
                 {
                     scannedInstanceExamples.Add(instanceName);
                     var extractedPid = ExtractPidFromInstanceName(instanceName);

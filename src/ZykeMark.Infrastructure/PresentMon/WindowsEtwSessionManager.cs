@@ -15,6 +15,11 @@ public sealed class WindowsEtwSessionManager : IEtwSessionManager
     private const string LogmanPath = @"C:\Windows\System32\logman.exe";
     private const int DefaultTimeoutMs = 10000; // 10 seconds
 
+    // Regex for extracting session name from logman output (first column, ends at multiple spaces)
+    private static readonly Regex SessionNameRegex = new(
+        @"^(\S+(?:\s(?!\s)\S*)*)",
+        RegexOptions.Compiled);
+
     private readonly Action<string>? _logger;
 
     public WindowsEtwSessionManager(Action<string>? logger = null)
@@ -259,7 +264,7 @@ public sealed class WindowsEtwSessionManager : IEtwSessionManager
         // Pattern: session names don't contain tabs or multiple consecutive spaces
         
         // Find where the first column ends (multiple spaces or tab indicate column boundary)
-        var match = Regex.Match(line, @"^(\S+(?:\s(?!\s)\S*)*)");
+        var match = SessionNameRegex.Match(line);
         return match.Success ? match.Groups[1].Value.Trim() : string.Empty;
     }
 

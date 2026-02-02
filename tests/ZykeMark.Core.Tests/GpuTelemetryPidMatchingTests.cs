@@ -100,7 +100,7 @@ public class GpuTelemetryPidMatchingTests
 
         // Should match 3 instances (pids 1000, 1001, 1002)
         Assert.Equal(3, matchedInstances.Count);
-        Assert.All(matchedInstances, instance => 
-            Assert.Contains("pid_100", instance));
+        Assert.DoesNotContain(matchedInstances, instance => 
+            instance.Contains("pid_9999") || instance.Contains("pid_8888"));
     }
 }
