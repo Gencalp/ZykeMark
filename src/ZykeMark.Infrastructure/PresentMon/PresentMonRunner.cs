@@ -1,19 +1,32 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.RegularExpressions;
 
 namespace ZykeMark.Infrastructure.PresentMon;
 
+[SupportedOSPlatform("windows")]
 public sealed class PresentMonRunner : IPresentMonRunner
 {
     private const int MaxCsvPreviewLines = 30;
+    private const int Error1450ExitCode = 6; // PresentMon exit code when ETW session fails with 1450
+    private const int WatchdogGraceSeconds = 10; // Grace period beyond timed duration
+    private const string EtwSessionPrefix = "ZykeMark_";
+    
     private readonly Action<string>? _logger;
+    private readonly IEtwSessionManager _etwSessionManager;
 
     public PresentMonRunner(Action<string>? logger = null)
+        : this(logger, new WindowsEtwSessionManager(logger))
+    {
+    }
+
+    public PresentMonRunner(Action<string>? logger, IEtwSessionManager etwSessionManager)
     {
         _logger = logger;
+        _etwSessionManager = etwSessionManager ?? throw new ArgumentNullException(nameof(etwSessionManager));
     }
 
     /// <inheritdoc />
@@ -42,6 +55,154 @@ public sealed class PresentMonRunner : IPresentMonRunner
             StartUtc = DateTime.UtcNow
         };
 
+        // Step 1: Clean up stale ETW sessions before starting capture
+        await CleanupStaleEtwSessionsAsync(diagnostics).ConfigureAwait(false);
+
+        // Step 2: Run PresentMon capture (with retry on error 1450)
+        var result = await RunCaptureWithRetryAsync(options, diagnostics, cancellationToken).ConfigureAwait(false);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Cleans up stale ZykeMark ETW sessions before starting a new capture.
+    /// </summary>
+    private async Task CleanupStaleEtwSessionsAsync(CaptureDiagnostics diagnostics)
+    {
+        diagnostics.EtwCleanupAttempted = true;
+
+        try
+        {
+            var cleanupResult = await _etwSessionManager.CleanupStaleSessionsAsync(EtwSessionPrefix).ConfigureAwait(false);
+            
+            diagnostics.EtwCleanupSuccess = cleanupResult.Success;
+            diagnostics.EtwSessionsStopped = cleanupResult.StoppedSessions.Count > 0 
+                ? cleanupResult.StoppedSessions.ToList() 
+                : null;
+            diagnostics.EtwSessionsFailedToStop = cleanupResult.FailedSessions.Count > 0 
+                ? cleanupResult.FailedSessions.ToList() 
+                : null;
+            diagnostics.EtwCleanupError = cleanupResult.ErrorMessage;
+
+            if (cleanupResult.HadStaleSessions)
+            {
+                Log($"[PresentMon] ETW cleanup: stopped {cleanupResult.StoppedSessions.Count} stale session(s)");
+                if (cleanupResult.FailedSessions.Count > 0)
+                {
+                    Log($"[PresentMon] ETW cleanup: failed to stop {cleanupResult.FailedSessions.Count} session(s)");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            diagnostics.EtwCleanupSuccess = false;
+            diagnostics.EtwCleanupError = ex.Message;
+            Log($"[PresentMon] ETW cleanup failed: {ex.Message}");
+            // Continue with capture even if cleanup fails
+        }
+    }
+
+    /// <summary>
+    /// Runs PresentMon capture with automatic retry on error 1450.
+    /// </summary>
+    private async Task<PresentMonRunResult> RunCaptureWithRetryAsync(
+        PresentMonRunOptions options,
+        CaptureDiagnostics diagnostics,
+        CancellationToken cancellationToken)
+    {
+        var result = await RunCaptureInternalAsync(options, diagnostics, cancellationToken).ConfigureAwait(false);
+
+        // Check if we got error 1450 (ETW session stuck)
+        if (IsError1450(result))
+        {
+            Log($"[PresentMon] Detected error 1450 (ETW session stuck). Attempting recovery...");
+            diagnostics.Error1450RetryAttempted = true;
+
+            // Clean up ETW sessions again
+            await CleanupEtwSessionForRetryAsync(options, diagnostics).ConfigureAwait(false);
+
+            // Retry the capture once
+            Log($"[PresentMon] Retrying capture after ETW cleanup...");
+            var retryResult = await RunCaptureInternalAsync(options, diagnostics, cancellationToken).ConfigureAwait(false);
+            
+            diagnostics.Error1450RetrySuccess = !IsError1450(retryResult) && retryResult.CsvPath != null;
+
+            return retryResult;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Checks if the result indicates error 1450 (ETW session stuck).
+    /// </summary>
+    private bool IsError1450(PresentMonRunResult result)
+    {
+        // Check exit code
+        if (result.ExitCode == Error1450ExitCode)
+        {
+            return true;
+        }
+
+        // Also check stderr for the specific error message
+        if (!string.IsNullOrWhiteSpace(result.StdErr) && 
+            result.StdErr.Contains("1450", StringComparison.OrdinalIgnoreCase) &&
+            result.StdErr.Contains("trace session", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Cleans up ETW session specifically for retry after error 1450.
+    /// </summary>
+    private async Task CleanupEtwSessionForRetryAsync(PresentMonRunOptions options, CaptureDiagnostics diagnostics)
+    {
+        // Try to stop the specific session that was attempted
+        if (!string.IsNullOrWhiteSpace(options.SessionId))
+        {
+            var sessionName = $"{EtwSessionPrefix}{options.SessionId}";
+            Log($"[PresentMon] Attempting to stop specific session: {sessionName}");
+            await _etwSessionManager.StopSessionAsync(sessionName).ConfigureAwait(false);
+        }
+
+        // Also do a general cleanup
+        await _etwSessionManager.CleanupStaleSessionsAsync(EtwSessionPrefix).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Cleans up ETW session after a watchdog timeout.
+    /// </summary>
+    private async Task CleanupAfterWatchdogTimeoutAsync(PresentMonRunOptions options, CaptureDiagnostics diagnostics)
+    {
+        Log("[PresentMon] Cleaning up ETW session after watchdog timeout...");
+        
+        // Try to stop the specific session that was running
+        if (!string.IsNullOrWhiteSpace(options.SessionId))
+        {
+            var sessionName = $"{EtwSessionPrefix}{options.SessionId}";
+            Log($"[PresentMon] Attempting to stop session after timeout: {sessionName}");
+            var result = await _etwSessionManager.StopSessionAsync(sessionName).ConfigureAwait(false);
+            if (!result.Success)
+            {
+                Log($"[PresentMon] Failed to stop session {sessionName}: {result.ErrorMessage}");
+            }
+        }
+
+        // Also do a general cleanup to catch any orphaned sessions
+        await _etwSessionManager.CleanupStaleSessionsAsync(EtwSessionPrefix).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Internal capture implementation with watchdog timeout.
+    /// </summary>
+    private async Task<PresentMonRunResult> RunCaptureInternalAsync(
+        PresentMonRunOptions options,
+        CaptureDiagnostics diagnostics,
+        CancellationToken cancellationToken)
+    {
         string? exePath = null;
         string? csvPath = null;
         string? workingDirectory = null;
@@ -164,7 +325,53 @@ public sealed class PresentMonRunner : IPresentMonRunner
             }
         });
 
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        // Watchdog timeout: timed capture duration + grace period
+        var watchdogTimeoutSeconds = options.DurationSeconds + WatchdogGraceSeconds;
+        diagnostics.WatchdogTimeoutSeconds = watchdogTimeoutSeconds;
+        
+        using var watchdogCts = new CancellationTokenSource(TimeSpan.FromSeconds(watchdogTimeoutSeconds));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, watchdogCts.Token);
+
+        try
+        {
+            await process.WaitForExitAsync(linkedCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (watchdogCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // Watchdog timeout occurred (not user cancellation)
+            Log($"[PresentMon] Watchdog timeout after {watchdogTimeoutSeconds}s - PresentMon appears to be hung");
+            diagnostics.WatchdogTimeoutOccurred = true;
+            
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    Log("[PresentMon] Force-killed hung PresentMon process");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[PresentMon] Failed to kill hung process: {ex.Message}");
+            }
+
+            // Clean up any ETW session that may be stuck
+            await CleanupAfterWatchdogTimeoutAsync(options, diagnostics).ConfigureAwait(false);
+
+            diagnostics.EndUtc = DateTime.UtcNow;
+            diagnostics.Success = false;
+            diagnostics.FailureReason = $"PresentMon watchdog timeout after {watchdogTimeoutSeconds}s. Process was force-killed.";
+            WriteDiagnosticsSafe(diagnostics, options.SessionFolder);
+
+            return new PresentMonRunResult(
+                CsvPath: null,
+                ExitCode: -1,
+                StdOut: stdoutBuilder.ToString(),
+                StdErr: stderrBuilder.ToString() + $"\n[Watchdog] Timeout after {watchdogTimeoutSeconds}s",
+                EtwEventsLostCount: null,
+                RawWarnings: new[] { $"Watchdog timeout after {watchdogTimeoutSeconds}s" },
+                Diagnostics: diagnostics);
+        }
 
         try
         {

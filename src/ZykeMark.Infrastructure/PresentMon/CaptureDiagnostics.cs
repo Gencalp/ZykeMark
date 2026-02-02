@@ -115,6 +115,60 @@ public sealed class CaptureDiagnostics
     /// </summary>
     public string? ExceptionDetails { get; set; }
 
+    #region ETW Session Cleanup Diagnostics
+
+    /// <summary>
+    /// Whether ETW session cleanup was attempted before capture.
+    /// </summary>
+    public bool? EtwCleanupAttempted { get; set; }
+
+    /// <summary>
+    /// Whether ETW cleanup was successful.
+    /// </summary>
+    public bool? EtwCleanupSuccess { get; set; }
+
+    /// <summary>
+    /// List of stale ETW sessions that were stopped during cleanup.
+    /// </summary>
+    public IReadOnlyList<string>? EtwSessionsStopped { get; set; }
+
+    /// <summary>
+    /// List of ETW sessions that failed to stop during cleanup.
+    /// </summary>
+    public IReadOnlyList<string>? EtwSessionsFailedToStop { get; set; }
+
+    /// <summary>
+    /// Error message from ETW cleanup if it failed.
+    /// </summary>
+    public string? EtwCleanupError { get; set; }
+
+    /// <summary>
+    /// Raw logman output from session listing (for debugging).
+    /// </summary>
+    public string? EtwLogmanQueryOutput { get; set; }
+
+    /// <summary>
+    /// Whether a retry was attempted after error 1450.
+    /// </summary>
+    public bool? Error1450RetryAttempted { get; set; }
+
+    /// <summary>
+    /// Whether the retry after error 1450 was successful.
+    /// </summary>
+    public bool? Error1450RetrySuccess { get; set; }
+
+    /// <summary>
+    /// Whether a watchdog timeout occurred during capture.
+    /// </summary>
+    public bool? WatchdogTimeoutOccurred { get; set; }
+
+    /// <summary>
+    /// The watchdog timeout value in seconds.
+    /// </summary>
+    public int? WatchdogTimeoutSeconds { get; set; }
+
+    #endregion
+
     /// <summary>
     /// Writes the diagnostics to a JSON file.
     /// </summary>
