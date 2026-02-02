@@ -26,6 +26,14 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 {
     private const int SampleIntervalMs = 500; // Sample every 500ms
     private const double BytesToMB = 1.0 / (1024.0 * 1024.0);
+    private const int PidSetRefreshIntervalMs = 5000; // Refresh PID set every 5 seconds for multi-process apps
+    private const int MaxDiagnosticSampleInstances = 20; // Max number of instance names to scan for diagnostics
+    
+    // Regex pattern to extract PID from performance counter instance names
+    // Matches patterns like "pid_1234_", "pid_9068_luid_...", etc.
+    private static readonly System.Text.RegularExpressions.Regex PidRegex = new(
+        @"pid_(\d+)_",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
     
     private readonly object _lock = new();
     private readonly List<TelemetrySample> _samples = new();
@@ -38,6 +46,12 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
     private bool _isGpuTelemetryAvailable;
     private TelemetrySample? _latestSample;
     private DateTime _startTime;
+    
+    // Multi-process app support
+    private string? _processName;
+    private bool _isMultiProcessApp;
+    private HashSet<int> _targetPidSet = new();
+    private DateTime _lastPidSetRefresh;
     
     // CPU tracking
     private DateTime _lastCpuSampleTime;
@@ -73,17 +87,39 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
     public void Start(int processId)
     {
+        Start(processId, processName: null, isMultiProcessApp: false);
+    }
+
+    /// <summary>
+    /// Starts telemetry sampling with optional multi-process app support.
+    /// </summary>
+    /// <param name="processId">The primary process ID to monitor.</param>
+    /// <param name="processName">The process name (for multi-process apps, used to find all related PIDs).</param>
+    /// <param name="isMultiProcessApp">Whether this is a multi-process application (browsers, Electron apps, etc.).</param>
+    public void Start(int processId, string? processName, bool isMultiProcessApp)
+    {
         if (_isRunning)
         {
             throw new InvalidOperationException("Sampler is already running.");
         }
 
         _processId = processId;
+        _processName = processName;
+        _isMultiProcessApp = isMultiProcessApp;
+        
+        // Build initial PID set
+        BuildTargetPidSet();
         
         try
         {
             _process = Process.GetProcessById(processId);
             Log($"[Telemetry] Started monitoring process: {_process.ProcessName} (PID {processId})");
+            
+            // If no process name was provided, use the one from the process
+            if (string.IsNullOrWhiteSpace(_processName))
+            {
+                _processName = _process.ProcessName;
+            }
         }
         catch (ArgumentException ex)
         {
@@ -125,7 +161,85 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
         _isRunning = true;
         _timer = new System.Threading.Timer(OnTimerTick, null, 0, SampleIntervalMs);
         
-        Log($"[Telemetry] Sampler started. GPU telemetry available: {_isGpuTelemetryAvailable}");
+        Log($"[Telemetry] Sampler started. GPU telemetry available: {_isGpuTelemetryAvailable}, Multi-process: {_isMultiProcessApp}, PIDs: {string.Join(",", _targetPidSet)}");
+    }
+
+    /// <summary>
+    /// Builds the target PID set for GPU counter matching.
+    /// For multi-process apps, finds all processes with the same name.
+    /// For single-process apps, just uses the primary PID.
+    /// </summary>
+    private void BuildTargetPidSet()
+    {
+        _targetPidSet.Clear();
+        _targetPidSet.Add(_processId);
+        _lastPidSetRefresh = DateTime.UtcNow;
+
+        if (_isMultiProcessApp && !string.IsNullOrWhiteSpace(_processName))
+        {
+            try
+            {
+                var processName = _processName!;
+                // Remove .exe extension if present
+                if (processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    processName = processName[..^4];
+                }
+
+                var relatedProcesses = Process.GetProcessesByName(processName);
+                try
+                {
+                    foreach (var process in relatedProcesses)
+                    {
+                        try
+                        {
+                            _targetPidSet.Add(process.Id);
+                        }
+                        catch
+                        {
+                            // Process may have exited
+                        }
+                    }
+                    
+                    Log($"[Telemetry] Multi-process app '{processName}': found {_targetPidSet.Count} related PIDs");
+                }
+                finally
+                {
+                    foreach (var process in relatedProcesses)
+                    {
+                        process.Dispose();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[Telemetry] Warning: Could not enumerate related processes: {ex.Message}");
+            }
+        }
+
+        // Update diagnostics
+        _diagnostics.IsMultiProcessApp = _isMultiProcessApp;
+        _diagnostics.ProcessName = _processName;
+        _diagnostics.TargetPidSet = _targetPidSet.ToList();
+    }
+
+    /// <summary>
+    /// Refreshes the PID set for multi-process apps (called periodically during sampling).
+    /// </summary>
+    private void RefreshPidSetIfNeeded()
+    {
+        if (!_isMultiProcessApp)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if ((now - _lastPidSetRefresh).TotalMilliseconds < PidSetRefreshIntervalMs)
+        {
+            return;
+        }
+
+        BuildTargetPidSet();
     }
 
     public void Stop()
@@ -295,6 +409,9 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
         try
         {
+            // Refresh PID set for multi-process apps periodically
+            RefreshPidSetIfNeeded();
+            
             var sample = CollectSample();
             if (sample != null)
             {
@@ -675,9 +792,10 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
     
     private void CacheAndPrimeGpuCounters()
     {
-        var pidPattern = $"pid_{_processId}_";
         var matchedEngineInstances = new List<string>();
         var matchedMemoryInstances = new List<string>();
+        var scannedInstanceExamples = new List<string>();
+        var extractedPids = new HashSet<int>();
         
         // Cache GPU Engine counters (Utilization Percentage)
         if (_gpuEngineCategory != null)
@@ -685,16 +803,30 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
             try
             {
                 var instanceNames = _gpuEngineCategory.GetInstanceNames();
+                _diagnostics.TotalGpuEngineInstances = instanceNames.Length;
                 Log($"[Telemetry] GPU Engine has {instanceNames.Length} total instances");
                 
+                // First pass: extract all PIDs from instances to understand what's available
+                foreach (var instanceName in instanceNames.Take(MaxDiagnosticSampleInstances))
+                {
+                    scannedInstanceExamples.Add(instanceName);
+                    var extractedPid = ExtractPidFromInstanceName(instanceName);
+                    if (extractedPid.HasValue)
+                    {
+                        extractedPids.Add(extractedPid.Value);
+                    }
+                }
+                
+                // Second pass: match instances against our target PID set
                 foreach (var instanceName in instanceNames)
                 {
-                    if (!instanceName.Contains(pidPattern, StringComparison.OrdinalIgnoreCase))
+                    var instancePid = ExtractPidFromInstanceName(instanceName);
+                    if (!instancePid.HasValue || !_targetPidSet.Contains(instancePid.Value))
                     {
                         continue;
                     }
                     
-                    // Prefer 3D engine instances, but collect all for this PID
+                    // Prefer 3D engine instances, but collect all for matching PIDs
                     var is3DEngine = instanceName.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase) ||
                                      instanceName.Contains("engtype_Graphics", StringComparison.OrdinalIgnoreCase);
                     
@@ -717,7 +849,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                     }
                 }
                 
-                Log($"[Telemetry] Cached {_gpuUtilizationCounters.Count} GPU utilization counters for PID {_processId}");
+                Log($"[Telemetry] Cached {_gpuUtilizationCounters.Count} GPU utilization counters for PID set [{string.Join(",", _targetPidSet)}]");
             }
             catch (Exception ex)
             {
@@ -732,11 +864,13 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
             try
             {
                 var instanceNames = _gpuProcessMemoryCategory.GetInstanceNames();
+                _diagnostics.TotalGpuProcessMemoryInstances = instanceNames.Length;
                 Log($"[Telemetry] GPU Process Memory has {instanceNames.Length} total instances");
                 
                 foreach (var instanceName in instanceNames)
                 {
-                    if (!instanceName.Contains(pidPattern, StringComparison.OrdinalIgnoreCase))
+                    var instancePid = ExtractPidFromInstanceName(instanceName);
+                    if (!instancePid.HasValue || !_targetPidSet.Contains(instancePid.Value))
                     {
                         continue;
                     }
@@ -761,7 +895,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                     }
                 }
                 
-                Log($"[Telemetry] Cached {_vramDedicatedCounters.Count} VRAM counters for PID {_processId}");
+                Log($"[Telemetry] Cached {_vramDedicatedCounters.Count} VRAM counters for PID set [{string.Join(",", _targetPidSet)}]");
             }
             catch (Exception ex)
             {
@@ -775,6 +909,35 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
         _diagnostics.GpuProcessMemoryMatchedCount = _vramDedicatedCounters.Count;
         _diagnostics.GpuEngineMatchedExamples = matchedEngineInstances.Take(5).ToList();
         _diagnostics.GpuProcessMemoryMatchedExamples = matchedMemoryInstances.Take(5).ToList();
+        _diagnostics.ScannedInstanceExamples = scannedInstanceExamples.Take(10).ToList();
+        _diagnostics.ExtractedPidsFromInstances = extractedPids.Take(20).ToList();
+        
+        // Record reason if matching failed
+        if (_gpuUtilizationCounters.Count == 0 && _vramDedicatedCounters.Count == 0 && 
+            (_diagnostics.TotalGpuEngineInstances > 0 || _diagnostics.TotalGpuProcessMemoryInstances > 0))
+        {
+            var targetPidStr = string.Join(",", _targetPidSet);
+            var extractedPidStr = extractedPids.Count > 0 ? string.Join(",", extractedPids.Take(10)) : "(none)";
+            _diagnostics.MatchingFailureReason = 
+                $"No instances matched target PIDs [{targetPidStr}]. " +
+                $"Extracted PIDs from instances: [{extractedPidStr}]. " +
+                $"This may happen if the target process has no active GPU context.";
+            Log($"[Telemetry] {_diagnostics.MatchingFailureReason}");
+        }
+    }
+
+    /// <summary>
+    /// Extracts the PID from a GPU performance counter instance name using regex.
+    /// Handles common patterns like "pid_1234_luid_0x..." and variations.
+    /// </summary>
+    private static int? ExtractPidFromInstanceName(string instanceName)
+    {
+        var match = PidRegex.Match(instanceName);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var pid))
+        {
+            return pid;
+        }
+        return null;
     }
 
     private double? CollectGpuUtilizationPercent()
@@ -829,7 +992,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
         try
         {
-            double maxDedicated = 0;
+            double totalDedicated = 0;
             var validReadings = 0;
 
             foreach (var counter in _vramDedicatedCounters)
@@ -839,7 +1002,8 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                     var value = counter.NextValue();
                     if (value >= 0)
                     {
-                        maxDedicated = Math.Max(maxDedicated, value);
+                        // Sum dedicated VRAM across all matching PIDs
+                        totalDedicated += value;
                         validReadings++;
                     }
                 }
@@ -854,7 +1018,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                 return null;
             }
 
-            return maxDedicated * BytesToMB;
+            return totalDedicated * BytesToMB;
         }
         catch (Exception ex)
         {
@@ -872,7 +1036,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
         try
         {
-            double maxShared = 0;
+            double totalShared = 0;
             var validReadings = 0;
 
             foreach (var counter in _vramSharedCounters)
@@ -882,7 +1046,8 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                     var value = counter.NextValue();
                     if (value >= 0)
                     {
-                        maxShared = Math.Max(maxShared, value);
+                        // Sum shared VRAM across all matching PIDs
+                        totalShared += value;
                         validReadings++;
                     }
                 }
@@ -897,7 +1062,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                 return null;
             }
 
-            return maxShared * BytesToMB;
+            return totalShared * BytesToMB;
         }
         catch (Exception ex)
         {
@@ -983,6 +1148,18 @@ public sealed class TelemetryDiagnostics
     public string? GpuProcessMemoryError { get; set; }
     public int GpuProcessMemoryMatchedCount { get; set; }
     public List<string>? GpuProcessMemoryMatchedExamples { get; set; }
+    
+    // Multi-process app support
+    public bool IsMultiProcessApp { get; set; }
+    public List<int>? TargetPidSet { get; set; }
+    public string? ProcessName { get; set; }
+    
+    // Instance scanning details (for debugging when matching fails)
+    public int TotalGpuEngineInstances { get; set; }
+    public int TotalGpuProcessMemoryInstances { get; set; }
+    public List<string>? ScannedInstanceExamples { get; set; }
+    public List<int>? ExtractedPidsFromInstances { get; set; }
+    public string? MatchingFailureReason { get; set; }
     
     // General status
     public string? LastExceptionMessage { get; set; }
