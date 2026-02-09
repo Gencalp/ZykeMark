@@ -346,9 +346,11 @@ public class PresentMonRunnerTests
             ProcessName: "chrome.exe",
             ProcessId: null,
             DurationSeconds: 10,
+            SessionId: "test456",
+            SessionFolder: "/tmp/test",
             PreferProcessName: true);
 
-        var arguments = InvokeBuildArguments(options, null);
+        var arguments = InvokeBuildArguments(options, "/tmp/test/presentmon.csv");
 
         Assert.Contains("--process_name chrome.exe", arguments);
         Assert.DoesNotContain("chrome.exe.exe", arguments);
@@ -363,9 +365,11 @@ public class PresentMonRunnerTests
             ProcessName: "firefox",
             ProcessId: null,
             DurationSeconds: 5,
+            SessionId: "test789",
+            SessionFolder: "/tmp/test",
             PreferProcessName: false);
 
-        var arguments = InvokeBuildArguments(options, null);
+        var arguments = InvokeBuildArguments(options, "/tmp/test/presentmon.csv");
 
         Assert.Contains("--process_name firefox.exe", arguments);
     }
