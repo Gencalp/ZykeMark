@@ -158,6 +158,16 @@ public sealed class CaptureDiagnostics
     public bool? Error1450RetrySuccess { get; set; }
 
     /// <summary>
+    /// Whether a retry was attempted after detecting a non-elevated --process_name failure.
+    /// </summary>
+    public bool? ElevationRetryAttempted { get; set; }
+
+    /// <summary>
+    /// Whether the retry with --process_id after a non-elevated --process_name failure was successful.
+    /// </summary>
+    public bool? ElevationRetrySuccess { get; set; }
+
+    /// <summary>
     /// Whether a watchdog timeout occurred during capture.
     /// </summary>
     public bool? WatchdogTimeoutOccurred { get; set; }
