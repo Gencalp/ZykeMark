@@ -1087,7 +1087,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
         {
             // Multi-process app mode: use process name to capture all child processes (e.g., browser GPU process)
             parts.Add("--process_name");
-            parts.Add(options.ProcessName!);
+            parts.Add(NormalizeProcessNameForPresentMon(options.ProcessName!));
         }
         else if (!options.PreferProcessName && options.ProcessId.HasValue)
         {
@@ -1099,7 +1099,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
         {
             // Fallback to process name if no PID
             parts.Add("--process_name");
-            parts.Add(options.ProcessName!);
+            parts.Add(NormalizeProcessNameForPresentMon(options.ProcessName!));
         }
         else if (options.ProcessId.HasValue)
         {
@@ -1114,6 +1114,21 @@ public sealed class PresentMonRunner : IPresentMonRunner
     private static string QuoteIfNeeded(string value)
     {
         return value.Contains(' ') ? $"\"{value}\"" : value;
+    }
+
+    /// <summary>
+    /// Ensures the process name ends with ".exe" for PresentMon's --process_name argument.
+    /// PresentMon matches against the full executable name (e.g., "chrome.exe"), so passing
+    /// just "chrome" will fail to match any process and produce no CSV output.
+    /// </summary>
+    internal static string NormalizeProcessNameForPresentMon(string processName)
+    {
+        if (processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return processName;
+        }
+
+        return processName + ".exe";
     }
 
     /// <summary>
