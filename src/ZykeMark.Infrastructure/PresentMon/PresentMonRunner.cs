@@ -152,7 +152,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
     /// <summary>
     /// Checks if the capture failed because --process_name was used without elevated privileges.
     /// PresentMon requires elevation to resolve process names for processes started on other accounts;
-    /// without it, those processes appear as '&lt;unknown&gt;' and --process_name cannot target them.
+    /// without it, those processes appear as unknown and --process_name cannot target them.
     /// </summary>
     internal static bool IsNonElevatedProcessNameFailure(PresentMonRunResult result, PresentMonRunOptions options)
     {

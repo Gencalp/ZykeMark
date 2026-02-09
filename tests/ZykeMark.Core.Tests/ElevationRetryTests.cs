@@ -10,6 +10,8 @@ namespace ZykeMark.Core.Tests;
 /// </summary>
 public class ElevationRetryTests
 {
+    private const int TestProcessId = 2012;
+
     [Fact]
     public void IsNonElevatedProcessNameFailure_ReturnsTrueForElevationWarning()
     {
@@ -23,7 +25,7 @@ public class ElevationRetryTests
         var options = new PresentMonRunOptions(
             PresentMonPath: null,
             ProcessName: "chrome",
-            ProcessId: 2012,
+            ProcessId: TestProcessId,
             DurationSeconds: 10,
             PreferProcessName: true);
 
@@ -43,7 +45,7 @@ public class ElevationRetryTests
         var options = new PresentMonRunOptions(
             PresentMonPath: null,
             ProcessName: "chrome",
-            ProcessId: 2012,
+            ProcessId: TestProcessId,
             DurationSeconds: 10,
             PreferProcessName: true);
 
@@ -63,7 +65,7 @@ public class ElevationRetryTests
         var options = new PresentMonRunOptions(
             PresentMonPath: null,
             ProcessName: "chrome",
-            ProcessId: 2012,
+            ProcessId: TestProcessId,
             DurationSeconds: 10,
             PreferProcessName: false);
 
@@ -103,7 +105,7 @@ public class ElevationRetryTests
         var options = new PresentMonRunOptions(
             PresentMonPath: null,
             ProcessName: "chrome",
-            ProcessId: 2012,
+            ProcessId: TestProcessId,
             DurationSeconds: 10,
             PreferProcessName: true);
 
@@ -122,7 +124,7 @@ public class ElevationRetryTests
         var options = new PresentMonRunOptions(
             PresentMonPath: null,
             ProcessName: "chrome",
-            ProcessId: 2012,
+            ProcessId: TestProcessId,
             DurationSeconds: 10,
             PreferProcessName: true);
 
@@ -141,7 +143,7 @@ public class ElevationRetryTests
         var options = new PresentMonRunOptions(
             PresentMonPath: null,
             ProcessName: "chrome",
-            ProcessId: 2012,
+            ProcessId: TestProcessId,
             DurationSeconds: 10,
             PreferProcessName: true);
 
