@@ -166,8 +166,8 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
 
     /// <summary>
     /// Builds the target PID set for GPU counter matching.
-    /// For multi-process apps, finds all processes with the same name.
-    /// For single-process apps, just uses the primary PID.
+    /// Always includes processes with the same name when a process name is available,
+    /// because GPU contexts often live in child processes (e.g., browser GPU processes).
     /// </summary>
     private void BuildTargetPidSet()
     {
@@ -175,7 +175,7 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
         _targetPidSet.Add(_processId);
         _lastPidSetRefresh = DateTime.UtcNow;
 
-        if (_isMultiProcessApp && !string.IsNullOrWhiteSpace(_processName))
+        if (!string.IsNullOrWhiteSpace(_processName))
         {
             try
             {
@@ -201,7 +201,14 @@ public sealed class WindowsTelemetrySampler : ITelemetrySampler
                         }
                     }
                     
-                    Log($"[Telemetry] Multi-process app '{processName}': found {_targetPidSet.Count} related PIDs");
+                    if (_isMultiProcessApp)
+                    {
+                        Log($"[Telemetry] Multi-process app '{processName}': found {_targetPidSet.Count} related PIDs");
+                    }
+                    else
+                    {
+                        Log($"[Telemetry] Process '{processName}': found {_targetPidSet.Count} related PIDs for GPU matching");
+                    }
                 }
                 finally
                 {

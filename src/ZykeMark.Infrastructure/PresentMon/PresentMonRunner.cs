@@ -103,7 +103,7 @@ public sealed class PresentMonRunner : IPresentMonRunner
     }
 
     /// <summary>
-    /// Runs PresentMon capture with automatic retry on error 1450.
+    /// Runs PresentMon capture with automatic retry on error 1450 and elevation fallback.
     /// </summary>
     private async Task<PresentMonRunResult> RunCaptureWithRetryAsync(
         PresentMonRunOptions options,
@@ -130,7 +130,51 @@ public sealed class PresentMonRunner : IPresentMonRunner
             return retryResult;
         }
 
+        // Check if capture failed due to non-elevated --process_name usage.
+        // When PresentMon runs without admin privileges, --process_name cannot match processes
+        // started on another account (they appear as '<unknown>'). If a ProcessId is available,
+        // retry with --process_id for precise targeting that works without elevation.
+        if (IsNonElevatedProcessNameFailure(result, options))
+        {
+            Log("[PresentMon] Detected non-elevated --process_name failure. Retrying with --process_id...");
+            diagnostics.ElevationRetryAttempted = true;
+
+            var fallbackOptions = options with { PreferProcessName = false };
+            var retryResult = await RunCaptureInternalAsync(fallbackOptions, diagnostics, cancellationToken).ConfigureAwait(false);
+
+            diagnostics.ElevationRetrySuccess = retryResult.CsvPath != null;
+            return retryResult;
+        }
+
         return result;
+    }
+
+    /// <summary>
+    /// Checks if the capture failed because --process_name was used without elevated privileges.
+    /// PresentMon requires elevation to resolve process names for processes started on other accounts;
+    /// without it, those processes appear as unknown and --process_name cannot target them.
+    /// </summary>
+    internal static bool IsNonElevatedProcessNameFailure(PresentMonRunResult result, PresentMonRunOptions options)
+    {
+        // Only applies when --process_name was used and a PID fallback is available
+        if (!options.PreferProcessName || !options.ProcessId.HasValue)
+        {
+            return false;
+        }
+
+        // CSV was not produced (capture yielded no data)
+        if (result.CsvPath is not null)
+        {
+            return false;
+        }
+
+        // Check stderr for the elevation privilege warning
+        if (string.IsNullOrWhiteSpace(result.StdErr))
+        {
+            return false;
+        }
+
+        return result.StdErr.Contains("elevated privilege", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
