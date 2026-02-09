@@ -306,4 +306,81 @@ public class PresentMonRunnerTests
         Assert.Equal("msedge.exe", options.ProcessName);
         Assert.Equal(9068, options.ProcessId);
     }
+
+    [Theory]
+    [InlineData("chrome", "chrome.exe")]
+    [InlineData("msedge", "msedge.exe")]
+    [InlineData("firefox", "firefox.exe")]
+    [InlineData("chrome.exe", "chrome.exe")]
+    [InlineData("MyGame.EXE", "MyGame.EXE")]
+    [InlineData("Game.Exe", "Game.Exe")]
+    public void NormalizeProcessNameForPresentMon_EnsuresExeSuffix(string input, string expected)
+    {
+        var result = PresentMonRunner.NormalizeProcessNameForPresentMon(input);
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void BuildArguments_WithProcessNameWithoutExe_AppendsExeSuffix()
+    {
+        var options = new PresentMonRunOptions(
+            PresentMonPath: null,
+            ProcessName: "chrome",
+            ProcessId: null,
+            DurationSeconds: 10,
+            SessionId: "test123",
+            SessionFolder: "/tmp/test",
+            PreferProcessName: true);
+
+        var arguments = InvokeBuildArguments(options, "/tmp/test/presentmon.csv");
+
+        Assert.Contains("--process_name chrome.exe", arguments);
+        Assert.DoesNotContain("--process_name chrome ", arguments);
+    }
+
+    [Fact]
+    public void BuildArguments_WithProcessNameWithExe_DoesNotDoubleAppend()
+    {
+        var options = new PresentMonRunOptions(
+            PresentMonPath: null,
+            ProcessName: "chrome.exe",
+            ProcessId: null,
+            DurationSeconds: 10,
+            SessionId: "test456",
+            SessionFolder: "/tmp/test",
+            PreferProcessName: true);
+
+        var arguments = InvokeBuildArguments(options, "/tmp/test/presentmon.csv");
+
+        Assert.Contains("--process_name chrome.exe", arguments);
+        Assert.DoesNotContain("chrome.exe.exe", arguments);
+    }
+
+    [Fact]
+    public void BuildArguments_FallbackProcessName_AlsoNormalized()
+    {
+        // When PreferProcessName is false and no PID is available, falls back to process name
+        var options = new PresentMonRunOptions(
+            PresentMonPath: null,
+            ProcessName: "firefox",
+            ProcessId: null,
+            DurationSeconds: 5,
+            SessionId: "test789",
+            SessionFolder: "/tmp/test",
+            PreferProcessName: false);
+
+        var arguments = InvokeBuildArguments(options, "/tmp/test/presentmon.csv");
+
+        Assert.Contains("--process_name firefox.exe", arguments);
+    }
+
+    /// <summary>
+    /// Helper to invoke the private BuildArguments method for testing.
+    /// </summary>
+    private static string InvokeBuildArguments(PresentMonRunOptions options, string? outputFile)
+    {
+        var method = typeof(PresentMonRunner).GetMethod("BuildArguments",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        return (string)method!.Invoke(null, [options, outputFile])!;
+    }
 }
