@@ -143,8 +143,6 @@ Fixture CSVs are included so parser tests do not require a live capture.
 - PresentMon is required for real frame capture
 - hardware coverage is still limited to the machines used during development
 
-Current scope: [docs/mvp-scope.md](docs/mvp-scope.md)
-
 ## License
 
 No open-source license is granted at this time.
