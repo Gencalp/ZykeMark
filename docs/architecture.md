@@ -1,65 +1,62 @@
 # ZykeMark Architecture
 
-## Overview
+ZykeMark is split into four projects so the Windows-specific capture code stays separate from the session/domain logic.
 
-ZykeMark is a Windows-first benchmarking application that combines frame-presentation data from PresentMon with process telemetry, persists each benchmark as a local session, computes aggregate metrics and can generate a PDF report.
-
-The design keeps capture, domain logic, storage and presentation concerns separate so runtime failures can be isolated and tested without requiring the whole desktop application.
-
-## Solution boundaries
+## Projects
 
 ### `ZykeMark.App.Desktop`
 
-WPF desktop application.
+WPF application.
 
-Responsibilities:
+Main responsibilities:
 
-- process selection and benchmark configuration
-- session start/stop orchestration
-- dependency/status feedback for PresentMon
-- live session state and completed-session browsing
-- wiring user settings into the capture pipeline
+- process selection
+- benchmark configuration
+- session start/stop
+- PresentMon dependency/status feedback
+- live and completed session views
 
 ### `ZykeMark.App.Cli`
 
-Command-line entry point for repeatable workflows and developer diagnostics.
+Command-line entry point used for repeatable runs and diagnostics.
 
-Responsibilities:
+Commands cover:
 
-- simulated benchmark runs
+- simulated benchmarks
 - real PresentMon capture
-- isolated telemetry checks
-- diagnostic capture workflows
+- telemetry checks
+- diagnostic capture
 - PDF export
 
-The CLI is useful when debugging a capture problem independently of the WPF UI.
+The CLI is useful when debugging capture without involving the WPF UI.
 
 ### `ZykeMark.Core`
 
-Domain layer with minimal platform-specific behavior.
+Platform-light domain code.
 
-Responsibilities:
+Contains:
 
-- session metadata and capture targets
-- frame and telemetry models
-- local session lifecycle
-- aggregation of benchmark metrics
-- abstractions for collectors, storage and telemetry
+- session metadata
+- capture targets
+- frame/telemetry models
+- session lifecycle
+- aggregation
+- interfaces used by infrastructure code
 
 ### `ZykeMark.Infrastructure`
 
-Windows/runtime integrations.
+Windows integrations and output generation.
 
-Responsibilities:
+Contains:
 
 - PresentMon path resolution and process execution
 - PresentMon CSV parsing
-- ETW session discovery and cleanup
-- Windows performance-counter telemetry
-- capture and telemetry diagnostics
-- PDF report generation
+- ETW session cleanup
+- Windows telemetry sampling
+- capture/telemetry diagnostics
+- PDF reports
 
-## Runtime data flow
+## Runtime flow
 
 ```mermaid
 sequenceDiagram
@@ -73,74 +70,67 @@ sequenceDiagram
 
     U->>O: Start benchmark
     O->>S: Create session metadata
-    par Capture frames
+    par Frame capture
         O->>P: Start PresentMon
         P-->>C: CSV frame data
-    and Sample telemetry
-        O->>T: Start Windows telemetry
+    and Telemetry
+        O->>T: Start sampler
         T-->>C: Timestamped samples
     end
     C->>C: Match telemetry to frame timestamps
-    C->>S: Persist chunks + diagnostics
-    O->>A: Stop and aggregate session
+    C->>S: Save chunks and diagnostics
+    O->>A: Stop session
     A->>S: Write summary.json
 ```
 
-## Capture targeting
+## Capture target
 
-The capture target contains a process name, PID or both.
+A target can contain a process name, PID or both.
 
-ZykeMark does not assume every application follows the same process model:
+For normal single-process applications, PID capture is usually enough. For browsers and Electron apps, process-name capture can be used so renderer/GPU child processes are not missed. Selected process-name failures can fall back to PID capture.
 
-- conventional single-process targets can use PID-based capture
-- known multi-process applications such as browsers and Electron applications can prefer process-name targeting so renderer/GPU child processes are not missed
-- selected process-name failures can fall back to PID-based capture
+## Diagnostics
 
-This behavior exists because real capture reliability depended on target process structure, not just a single identifier.
+The capture layer records enough runtime detail to investigate failed sessions without reproducing the UI state.
 
-## Reliability and diagnostics
-
-Capture failures are treated as observable states rather than generic exceptions.
-
-The infrastructure layer records information such as:
+Examples:
 
 - resolved PresentMon executable
-- generated arguments
-- exit code and process output
-- discovered CSV path and size
-- parsed header/row information
+- command-line arguments
+- exit code/stdout/stderr
+- CSV path and size
+- parsed row/header information
 - ETW cleanup/retry activity
-- telemetry PID matching information
-
-This allows a failed benchmark to be investigated from files in the session folder without reproducing the exact UI state.
+- telemetry PID matching
 
 ## Storage
 
-Sessions are stored locally under:
+Sessions are stored under:
 
 ```text
 %LOCALAPPDATA%\ZykeMark\sessions\<session-id>
 ```
 
-A session can include:
+A session may contain:
 
 - metadata
 - raw frame chunks
 - `summary.json`
 - capture diagnostics
 - telemetry diagnostics
-- generated PDF reports
+- PDF reports
 
-## Testing seams
+## Tests
 
-The project keeps interfaces around PresentMon execution, ETW management and telemetry so failure behavior can be tested with fakes and fixture CSV files.
+Interfaces around PresentMon, ETW and telemetry make the failure paths testable with fakes and fixture CSVs.
 
-Representative coverage includes:
+Coverage includes:
 
 - PresentMon argument construction
-- parser compatibility across CSV variants
-- stale ETW cleanup
-- elevation/fallback logic
-- multi-process GPU PID matching
+- CSV parser variants
+- ETW cleanup
+- elevation fallback
+- GPU PID matching
 - timestamp-based telemetry attachment
-- session aggregation and report generation
+- session aggregation
+- PDF report generation
